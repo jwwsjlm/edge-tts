@@ -417,7 +417,7 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
     assert docs.status_code == 200
     assert "Swagger UI" in docs.text
     assert schema_response.status_code == 200
-    assert schema["info"]["version"] == "7.3.3"
+    assert schema["info"]["version"] == "7.3.4"
     assert schema["components"]["securitySchemes"]["APIKeyHeader"] == {
         "type": "apiKey",
         "in": "header",

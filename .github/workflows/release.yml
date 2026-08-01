@@ -101,6 +101,7 @@ jobs:
         run: |
           mkdir -p release-assets
           docker run --rm --platform linux/amd64 \
+            --user "$(id -u):$(id -g)" \
             --volume "$PWD:/workspace" --workdir /workspace \
             python:3.14-slim \
             python3.14 packaging/python/build_bundle.py release-assets

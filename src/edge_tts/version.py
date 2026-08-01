@@ -1,4 +1,4 @@
 """Version information for the edge_tts package."""
 
-__version__ = "7.3.3"
+__version__ = "7.3.4"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
