@@ -402,11 +402,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.3.0",
+        "ghcr.io/jwwsjlm/edge-tts:7.3.1",
         "edge-tts-server-linux-amd64.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.3.0",
+        "EDGE_TTS_IMAGE_TAG=7.3.1",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -466,7 +466,7 @@ def test_windows_build_guide_is_complete() -> None:
     guide = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
 
     for required in (
-        "Python 3.12",
+        "Python 3.14",
         "python -m venv",
         'pip install -e ".[dev]"',
         "PyInstaller",
@@ -476,6 +476,27 @@ def test_windows_build_guide_is_complete() -> None:
         "/health",
     ):
         assert required in guide
+
+
+def test_current_release_docs_use_python_3_14_and_version_7_3_1() -> None:
+    """Current quick starts should match the runtime and release being published."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    windows = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
+    docker = (ROOT / "docs/docker.md").read_text(encoding="utf-8")
+    panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
+    notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
+
+    assert "# Edge TTS 7.3.1" in readme
+    assert "推荐 Python 3.14" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.3.1" in readme
+    assert "Python 3.12" not in readme
+    assert "Python 3.14 x64" in windows
+    assert "Python 3.12" not in windows
+    assert "ghcr.io/jwwsjlm/edge-tts:7.3.1" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.3.1" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.3.1" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.3.1" in panel
+    assert "Python 3.14" in notes
 
 
 def test_deployment_docs_copy_the_root_config_example() -> None:

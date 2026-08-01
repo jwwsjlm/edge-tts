@@ -4,7 +4,7 @@
 
 ## Release 资产
 
-- `edge-tts-server-windows-x64.zip`：双击运行，目标电脑无需安装 Python或联网安装依赖。
+- `edge-tts-server-windows-x64.zip`：使用 Python 3.14 x64 构建，可双击运行，目标电脑无需安装 Python 或联网安装依赖。
 - `edge-tts-server-linux-amd64.tar.gz`：可上传到离线 Docker/1Panel 服务器。
 - `SHA256SUMS.txt`：上述两个资产的 SHA-256。
 - 在线镜像：`__IMAGE__:__VERSION__` 与 `__IMAGE__:latest`，支持 `linux/amd64`、`linux/arm64`。

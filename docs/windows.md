@@ -1,11 +1,11 @@
 # Windows x64 本地构建与运行
 
-GitHub Release 已提供可双击运行的 x64 ZIP。本页用于需要从源码复现产物的维护者。正式发布固定使用 Python 3.12 x64 和当前仓库的 `edge-tts-server.spec`。
+GitHub Release 已提供可双击运行的 x64 ZIP。本页用于需要从源码复现产物的维护者。正式发布固定使用 Python 3.14 x64 和当前仓库的 `edge-tts-server.spec`。
 
 ## 构建要求
 
 - 64 位 Windows 10/11 或 Windows Server
-- Python 3.12 x64
+- Python 3.14 x64
 - PowerShell 5.1 或 7+
 - 首次安装依赖时可访问 PyPI
 
@@ -16,8 +16,8 @@ GitHub Release 已提供可双击运行的 x64 ZIP。本页用于需要从源码
 在仓库根目录运行：
 
 ```powershell
-py -3.12 -m venv .venv
-# 已确认当前 python 是 3.12 时也可执行：python -m venv .venv
+py -3.14 -m venv .venv
+# 已确认当前 python 是 3.14 时也可执行：python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
@@ -79,4 +79,4 @@ powershell -ExecutionPolicy Bypass -File .\call-example.ps1 -Text "Windows 构�
 
 ## 发布环境
 
-`.github/workflows/release.yml` 在 `windows-2022` 上使用 Python 3.12 x64 重建并冒烟测试。只有 `vX.Y.Z` Tag 与 `src/edge_tts/version.py` 完全一致，且测试、格式、类型、lint 全部通过时，Windows ZIP 才会进入 GitHub Release；最终 SHA-256 位于同一 Release 的 `SHA256SUMS.txt`。
+`.github/workflows/release.yml` 在 `windows-2022` 上使用 Python 3.14 x64 重建并冒烟测试。只有 `vX.Y.Z` Tag 与 `src/edge_tts/version.py` 完全一致，且测试、格式、类型、lint 全部通过时，Windows ZIP 才会进入 GitHub Release；最终 SHA-256 位于同一 Release 的 `SHA256SUMS.txt`。
