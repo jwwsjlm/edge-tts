@@ -93,4 +93,4 @@ curl -X POST http://127.0.0.1:5050/v1/tts \
   --output speech.mp3
 ```
 
-Windows users can download the release ZIP and double-click `edge-tts-server.exe` without installing Python. For server deployment, configuration, GHCR images, health checks, and upgrade instructions, see [the Docker deployment guide](docs/docker.md).
+Windows users can download the release ZIP and double-click `edge-tts-server.exe` without installing Python. For server deployment, configuration, health checks, and upgrade instructions, see the [1Panel Python deployment guide](docs/1panel.md) or the [Docker deployment guide](docs/docker.md).

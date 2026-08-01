@@ -28,13 +28,13 @@ port: 5050
 先复制示例配置并修改随机密钥：
 
 ```bash
-cp packaging/docker/config.example.yaml config.yaml
+cp config.example.yaml config.yaml
 ```
 
 PowerShell 使用：
 
 ```powershell
-Copy-Item .\packaging\docker\config.example.yaml .\config.yaml
+Copy-Item .\config.example.yaml .\config.yaml
 ```
 
 生产环境启动：

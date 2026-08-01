@@ -29,7 +29,7 @@ port: 5050
 解压本 Release 的 Source code，在仓库目录复制示例配置并修改 Key：
 
 ```bash
-cp packaging/docker/config.example.yaml config.yaml
+cp config.example.yaml config.yaml
 ```
 
 创建 `.env` 固定本次镜像版本：

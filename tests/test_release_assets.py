@@ -286,3 +286,43 @@ def test_root_secret_config_is_ignored_without_hiding_example() -> None:
         "config.example.yaml": 1,
         "nested/config.yaml": 1,
     }
+
+
+def test_1panel_guide_documents_python_deployment() -> None:
+    """1Panel users should have a complete Python deployment path."""
+    path = ROOT / "docs/1panel.md"
+
+    assert path.is_file()
+    guide = path.read_text(encoding="utf-8")
+    for required in (
+        "config.example.yaml",
+        "/opt/edge-tts",
+        "/opt/edge-tts-data/config.yaml",
+        "Python 3.12",
+        "pip install .",
+        "python -m edge_tts_server --config /opt/edge-tts-data/config.yaml",
+        "5050",
+        "/health",
+        "HTTPS",
+        "ZIP",
+    ):
+        assert required in guide
+
+
+def test_readme_links_1panel_python_deployment() -> None:
+    """The 1Panel guide should be discoverable from the README."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "(docs/1panel.md)" in readme
+
+
+def test_deployment_docs_copy_the_root_config_example() -> None:
+    """Deployment instructions should use the discoverable root example."""
+    docker_guide = (ROOT / "docs/docker.md").read_text(encoding="utf-8")
+    release_notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
+
+    assert "cp config.example.yaml config.yaml" in docker_guide
+    assert "Copy-Item .\\config.example.yaml .\\config.yaml" in docker_guide
+    assert "cp config.example.yaml config.yaml" in release_notes
+    for text in (docker_guide, release_notes):
+        assert "packaging/docker/config.example.yaml" not in text
