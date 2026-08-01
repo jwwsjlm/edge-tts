@@ -65,3 +65,34 @@ def test_windows_instructions_cover_double_click_and_api_key() -> None:
     assert "X-API-Key" in readme
     assert "X-API-Key" in example
     assert "speech.mp3" in example
+
+
+def test_docker_assets_define_non_root_healthy_service() -> None:
+    """The production image should use the shared entry point safely."""
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    for required in (
+        "python:3.12-slim",
+        "USER edge-tts",
+        "EXPOSE 5050",
+        "HEALTHCHECK",
+        "/health",
+        'ENTRYPOINT ["python", "-m", "edge_tts_server"]',
+        'CMD ["--config", "/config/config.yaml"]',
+    ):
+        assert required in dockerfile
+    assert ".git" in dockerignore
+    assert "releases" in dockerignore
+
+
+def test_docker_example_listens_on_all_interfaces() -> None:
+    """The container example must be reachable through a published port."""
+    path = ROOT / "packaging/docker/config.example.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    assert config == {
+        "api_key": "CHANGE_ME_TO_A_LONG_RANDOM_SECRET",
+        "host": "0.0.0.0",
+        "port": 5050,
+    }

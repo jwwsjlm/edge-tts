@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.mypy_cache
+.pytest_cache
+.worktrees
+__pycache__
+*.pyc
+build
+dist
+docs
+examples
+packaging
+releases
+tests
