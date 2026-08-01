@@ -4,6 +4,7 @@
 
 import asyncio
 import hmac
+import json
 import logging
 import time
 import uuid
@@ -24,8 +25,8 @@ from .config import ServerConfig
 from .models import ErrorResponse, TTSRequest
 
 CommunicatorFactory = Callable[..., Any]
-_ACCESS_LOGGER = logging.getLogger("edge_tts_server.access")
-_APP_LOGGER = logging.getLogger("edge_tts_server.app")
+_ACCESS_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.access")
+_APP_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.app")
 
 
 def _error(status: int, code: str, message: str, request: Request) -> JSONResponse:
@@ -74,14 +75,60 @@ class RequestContextMiddleware:
             duration_ms = (time.perf_counter() - started) * 1000
             error_type = scope.get("state", {}).get("error_type", "-")
             _ACCESS_LOGGER.info(
-                "request_id=%s method=%s path=%s status=%d duration_ms=%.2f error=%s",
-                request_id,
-                scope.get("method", "-"),
-                scope.get("path", "-"),
-                status,
-                duration_ms,
-                error_type,
+                "%s",
+                json.dumps(
+                    {
+                        "duration_ms": round(duration_ms, 2),
+                        "error": error_type,
+                        "method": scope.get("method", "-"),
+                        "path": scope.get("path", "-"),
+                        "request_id": request_id,
+                        "status": status,
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
             )
+
+
+class SafeErrorMiddleware:
+    """Map unhandled HTTP failures before Starlette's outer error response."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        response_started = False
+
+        async def tracked_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, tracked_send)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            if response_started:
+                raise
+            request_id = scope.get("state", {}).get("request_id", "-")
+            _APP_LOGGER.error(
+                "Unhandled application failure type=%s request_id=%s",
+                type(exc).__name__,
+                request_id,
+            )
+            response = _scope_error(
+                scope,
+                500,
+                "internal_error",
+                "Internal server error",
+            )
+            await response(scope, receive, tracked_send)
 
 
 class APIKeyMiddleware:
@@ -360,5 +407,6 @@ def create_app(
 
     app.add_middleware(BodyLimitMiddleware, max_bytes=config.max_request_bytes)
     app.add_middleware(APIKeyMiddleware, api_key=config.api_key)
+    app.add_middleware(SafeErrorMiddleware)
     app.add_middleware(RequestContextMiddleware)
     return app

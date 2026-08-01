@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Dict, List, Tuple, Type
 import aiohttp
 import httpx
 import pytest
+import uvicorn
 
 from edge_tts import exceptions
 from edge_tts_server.app import create_app
@@ -119,6 +120,25 @@ async def test_health_is_public_and_has_request_id() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert len(response.headers["X-Request-ID"]) == 32
+
+
+@pytest.mark.asyncio
+async def test_access_log_escapes_control_characters(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Untrusted paths must not inject forged access-log lines."""
+    caplog.set_level(logging.INFO)
+    async with client_for() as client:
+        await client.get("/forged%0Astatus=200")
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name.endswith("edge_tts_server.access")
+    ]
+    assert len(messages) == 1
+    assert "\n" not in messages[0]
+    assert "\\n" in messages[0]
 
 
 @pytest.mark.asyncio
@@ -343,6 +363,36 @@ async def test_unexpected_failures_return_safe_500(
 
 
 @pytest.mark.asyncio
+async def test_unhandled_application_failure_is_stable(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unhandled route failures still need safe JSON and a request ID."""
+    caplog.set_level(logging.INFO)
+    secret = "must not reach the response or logs"
+    app = create_app(CONFIG)
+
+    @app.get("/unhandled")
+    async def unhandled() -> None:
+        raise RuntimeError(secret)
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        response = await client.get("/unhandled")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": "internal_error",
+        "message": "Internal server error",
+    }
+    assert len(response.headers["X-Request-ID"]) == 32
+    assert secret not in response.text
+    assert secret not in caplog.text
+    assert response.headers["X-Request-ID"] in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_swagger_is_disabled_by_default() -> None:
     """Deployment documentation routes should be opt-in."""
     async with client_for() as client:
@@ -372,3 +422,20 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
         "name": "X-API-Key",
     }
     assert schema["paths"]["/v1/tts"]["post"]["security"] == [{"APIKeyHeader": []}]
+
+
+@pytest.mark.asyncio
+async def test_uvicorn_defaults_emit_the_safe_access_log(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The production Uvicorn logger should emit the custom access record."""
+    app = create_app(CONFIG)
+    uvicorn.Config(app, access_log=False)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        response = await client.get("/health")
+
+    captured = capsys.readouterr()
+    assert response.headers["X-Request-ID"] in captured.err
