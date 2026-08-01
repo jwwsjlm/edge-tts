@@ -245,9 +245,7 @@ def test_release_workflow_gates_all_publish_jobs() -> None:
 def test_automation_pins_python_3_14() -> None:
     """Maintained automation should use the release build Python version."""
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    quality = (ROOT / ".github/workflows/code-quality.yml").read_text(
-        encoding="utf-8"
-    )
+    quality = (ROOT / ".github/workflows/code-quality.yml").read_text(encoding="utf-8")
 
     assert release.count('python-version: "3.14"') == 2
     assert "Set up Python 3.14" in release
