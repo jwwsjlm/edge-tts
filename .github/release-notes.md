@@ -24,7 +24,29 @@ port: 5050
 
 `api_key` 是客户端 `X-API-Key` 请求头使用的密钥。请勿提交到 Git。修改配置或轮换 Key 后需重启容器。
 
-## 启动
+## Docker Compose 部署（推荐）
+
+解压本 Release 的 Source code，在仓库目录复制示例配置并修改 Key：
+
+```bash
+cp packaging/docker/config.example.yaml config.yaml
+```
+
+创建 `.env` 固定本次镜像版本：
+
+```dotenv
+EDGE_TTS_IMAGE_TAG=__VERSION__
+```
+
+启动服务：
+
+```bash
+docker compose -f compose.yaml up -d
+```
+
+`compose.yaml` 已配置只读挂载 `config.yaml`、自动重启，以及 DNS `223.5.5.5` 和 `119.29.29.29`。查看状态可执行 `docker compose -f compose.yaml ps`，停止服务可执行 `docker compose -f compose.yaml down`。
+
+## 直接使用 docker run
 
 Linux/macOS：
 

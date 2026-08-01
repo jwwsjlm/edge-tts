@@ -221,3 +221,34 @@ def test_development_compose_builds_local_dockerfile() -> None:
 
     assert service["build"] == {"context": ".", "dockerfile": "Dockerfile"}
     assert service["image"] == "edge-tts-http:local"
+
+
+def test_docker_guide_documents_both_compose_workflows() -> None:
+    """The maintained guide should explain standalone Compose operations."""
+    guide = (ROOT / "docs/docker.md").read_text(encoding="utf-8")
+
+    for required in (
+        "docker compose -f compose.yaml up -d",
+        "docker compose -f compose.dev.yaml up -d --build",
+        "EDGE_TTS_IMAGE_TAG",
+        "docker compose -f compose.yaml ps",
+        "docker compose -f compose.yaml logs -f",
+        "docker compose -f compose.yaml down",
+        "223.5.5.5",
+        "119.29.29.29",
+    ):
+        assert required in guide
+
+
+def test_release_notes_include_production_compose_deployment() -> None:
+    """Each Release should include the simplest production deployment path."""
+    notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
+
+    for required in (
+        "compose.yaml",
+        "docker compose -f compose.yaml up -d",
+        "EDGE_TTS_IMAGE_TAG",
+        "223.5.5.5",
+        "119.29.29.29",
+    ):
+        assert required in notes
