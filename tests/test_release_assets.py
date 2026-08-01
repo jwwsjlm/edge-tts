@@ -96,3 +96,48 @@ def test_docker_example_listens_on_all_interfaces() -> None:
         "host": "0.0.0.0",
         "port": 5050,
     }
+
+
+def test_docker_guide_covers_configuration_and_operations() -> None:
+    """The maintained guide should cover a complete secure deployment."""
+    guide = (ROOT / "docs/docker.md").read_text(encoding="utf-8")
+
+    for required in (
+        "ghcr.io/jwwsjlm/edge-tts",
+        "config.yaml",
+        "0.0.0.0",
+        "X-API-Key",
+        "docker run",
+        "/health",
+        "linux/amd64",
+        "linux/arm64",
+        "HTTPS",
+        "docker pull",
+    ):
+        assert required in guide
+
+
+def test_release_notes_are_a_self_contained_docker_guide() -> None:
+    """GitHub Release users should not need to find separate deployment docs."""
+    notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
+
+    for required in (
+        "__IMAGE__",
+        "__VERSION__",
+        "config.yaml",
+        "0.0.0.0",
+        "X-API-Key",
+        "docker run",
+        "/health",
+        "HTTPS",
+    ):
+        assert required in notes
+
+
+def test_main_readme_links_http_and_docker_usage() -> None:
+    """The project landing page should expose the new server entry points."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "edge-tts-server" in readme
+    assert "POST /v1/tts" in readme
+    assert "docs/docker.md" in readme

@@ -74,3 +74,23 @@ Other projects that use the `edge-tts` module include:
 * [hass-edge-tts](https://github.com/hasscc/hass-edge-tts/blob/main/custom_components/edge_tts/tts.py)
 * [Podcastfy](https://github.com/souzatharsis/podcastfy/blob/main/podcastfy/tts/providers/edge.py)
 * [tts-samples](https://github.com/yaph/tts-samples/blob/main/bin/create_sound_samples.py) - a collection of [mp3 sound samples](https://github.com/yaph/tts-samples/tree/main/mp3) to facilitate picking a voice for your project.
+
+## Authenticated HTTP server
+
+This fork also provides an API-key-protected HTTP service. Install the project and run:
+
+```console
+edge-tts-server
+```
+
+The first launch creates `config.yaml` with a random API key and listens on `127.0.0.1:5050`. Send JSON to `POST /v1/tts` with the key in the `X-API-Key` header; the response body is an MP3 file.
+
+```console
+curl -X POST http://127.0.0.1:5050/v1/tts \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"text":"Hello, world!","voice":"en-US-EmmaMultilingualNeural"}' \
+  --output speech.mp3
+```
+
+Windows users can download the release ZIP and double-click `edge-tts-server.exe` without installing Python. For server deployment, configuration, GHCR images, health checks, and upgrade instructions, see [the Docker deployment guide](docs/docker.md).
