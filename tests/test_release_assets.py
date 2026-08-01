@@ -89,6 +89,7 @@ def test_docker_assets_define_non_root_healthy_service() -> None:
         "/health",
         'ENTRYPOINT ["python", "-m", "edge_tts_server"]',
         'CMD ["--config", "/config/config.yaml"]',
+        "yaml.safe_load",
     ):
         assert required in dockerfile
     assert ".git" in dockerignore
