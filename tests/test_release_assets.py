@@ -507,11 +507,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_3_2() -> None:
+def test_release_version_is_7_3_3() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.3.2"
+    assert namespace["__version__"] == "7.3.3"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -544,11 +544,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.3.2",
+        "ghcr.io/jwwsjlm/edge-tts:7.3.3",
         "edge-tts-server-linux-amd64.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.3.2",
+        "EDGE_TTS_IMAGE_TAG=7.3.3",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -620,7 +620,7 @@ def test_windows_build_guide_is_complete() -> None:
         assert required in guide
 
 
-def test_current_release_docs_use_python_3_14_and_version_7_3_2() -> None:
+def test_current_release_docs_use_python_3_14_and_version_7_3_3() -> None:
     """Current quick starts should match the runtime and release being published."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     windows = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
@@ -628,17 +628,17 @@ def test_current_release_docs_use_python_3_14_and_version_7_3_2() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS 7.3.2" in readme
+    assert "# Edge TTS 7.3.3" in readme
     assert "推荐 Python 3.14" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.3.2" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.3.3" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.3.2" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.3.2" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.3.3" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.3.3" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.1" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.3.2" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.3.2" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.3.3" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.3.3" in panel
     assert "Python 3.14" in notes
 
 
