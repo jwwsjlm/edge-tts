@@ -19,8 +19,9 @@ ENV PATH=/opt/edge-tts/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-RUN groupadd --system edge-tts \
-    && useradd --system --gid edge-tts --home-dir /app --no-create-home edge-tts \
+RUN groupadd --gid 10001 edge-tts \
+    && useradd --uid 10001 --gid edge-tts --home-dir /app \
+        --no-create-home --shell /usr/sbin/nologin edge-tts \
     && mkdir -p /app /config \
     && chown edge-tts:edge-tts /app /config
 

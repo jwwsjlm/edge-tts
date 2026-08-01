@@ -113,6 +113,8 @@ def test_docker_assets_define_non_root_healthy_service() -> None:
     for required in (
         "FROM python:3.12-slim AS builder",
         "COPY --from=builder",
+        "groupadd --gid 10001 edge-tts",
+        "useradd --uid 10001",
         "USER edge-tts",
         "EXPOSE 5050",
         "STOPSIGNAL SIGTERM",
@@ -153,6 +155,10 @@ def test_docker_guide_covers_configuration_and_operations() -> None:
         "/health",
         "linux/amd64",
         "linux/arm64",
+        "edge-tts-server-linux-amd64.tar.gz",
+        "docker load",
+        "read_only",
+        "chown 10001:10001 config.yaml",
         "HTTPS",
         "docker pull",
     ):
@@ -170,6 +176,12 @@ def test_release_notes_are_a_self_contained_docker_guide() -> None:
         "0.0.0.0",
         "X-API-Key",
         "docker run",
+        "edge-tts-server-windows-x64.zip",
+        "edge-tts-server-linux-amd64.tar.gz",
+        "sha256sum -c SHA256SUMS.txt",
+        "docker load",
+        "1Panel",
+        "POST /v1/tts",
         "/health",
         "HTTPS",
     ):
@@ -183,6 +195,13 @@ def test_main_readme_links_http_and_docker_usage() -> None:
     assert "edge-tts-server" in readme
     assert "POST /v1/tts" in readme
     assert "docs/docker.md" in readme
+    assert "docs/api.md" in readme
+    assert "docs/windows.md" in readme
+    assert "docs/1panel.md" in readme
+    assert "Windows 双击运行" in readme
+    assert "Linux Docker" in readme
+    assert "离线部署" in readme
+    assert "python -m edge_tts_server --config config.yaml" in readme
 
 
 def test_release_workflow_gates_all_publish_jobs() -> None:
@@ -269,6 +288,7 @@ def test_docker_guide_documents_both_compose_workflows() -> None:
 
     for required in (
         "docker compose -f compose.yaml up -d",
+        "chown 10001:10001 config.yaml",
         "docker compose -f compose.dev.yaml up -d --build",
         "EDGE_TTS_IMAGE_TAG",
         "docker compose -f compose.yaml ps",
@@ -335,32 +355,88 @@ def test_root_secret_config_is_ignored_without_hiding_example() -> None:
     }
 
 
-def test_1panel_guide_documents_python_deployment() -> None:
-    """1Panel users should have a complete Python deployment path."""
+def test_1panel_guide_documents_docker_only_deployment() -> None:
+    """1Panel users should have complete online and offline Docker paths."""
     path = ROOT / "docs/1panel.md"
 
     assert path.is_file()
     guide = path.read_text(encoding="utf-8")
     for required in (
-        "config.example.yaml",
-        "/opt/edge-tts",
-        "/opt/edge-tts-data/config.yaml",
-        "Python 3.12",
-        "pip install .",
-        "python -m edge_tts_server --config /opt/edge-tts-data/config.yaml",
+        "Docker-only",
+        "ghcr.io/jwwsjlm/edge-tts:7.3.0",
+        "edge-tts-server-linux-amd64.tar.gz",
+        "sha256sum -c SHA256SUMS.txt",
+        "docker load",
+        "EDGE_TTS_IMAGE_TAG=7.3.0",
+        "chown 10001:10001 config.yaml",
+        "docker compose -f compose.yaml up -d",
         "5050",
         "/health",
+        "反向代理",
         "HTTPS",
-        "ZIP",
+        "升级",
+        "回滚",
+        "docker compose -f compose.yaml logs",
     ):
         assert required in guide
+    assert "Python 运行环境" not in guide
+    assert "pip install ." not in guide
 
 
-def test_readme_links_1panel_python_deployment() -> None:
+def test_readme_links_1panel_docker_deployment() -> None:
     """The 1Panel guide should be discoverable from the README."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "(docs/1panel.md)" in readme
+
+
+def test_api_guide_documents_complete_contract_and_clients() -> None:
+    """Callers should not need source code to integrate with the API."""
+    guide = (ROOT / "docs/api.md").read_text(encoding="utf-8")
+
+    for required in (
+        "POST /v1/tts",
+        "X-API-Key",
+        "text",
+        "voice",
+        "rate",
+        "volume",
+        "pitch",
+        "5000",
+        "65536",
+        "20971520",
+        "request_too_large",
+        "text_too_long",
+        "audio_too_large",
+        "too_many_requests",
+        "upstream_timeout",
+        "X-Request-ID",
+        "curl",
+        "Python",
+        "JavaScript",
+        "PowerShell",
+        "speech.mp3",
+        "/docs",
+        "/openapi.json",
+    ):
+        assert required in guide
+
+
+def test_windows_build_guide_is_complete() -> None:
+    """Maintainers should be able to reproduce the standalone x64 bundle."""
+    guide = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
+
+    for required in (
+        "Python 3.12",
+        "python -m venv",
+        'pip install -e ".[dev]"',
+        "PyInstaller",
+        "build_windows_release.ps1",
+        "releases/windows/edge-tts-server-windows-x64.zip",
+        "无需安装 Python",
+        "/health",
+    ):
+        assert required in guide
 
 
 def test_deployment_docs_copy_the_root_config_example() -> None:

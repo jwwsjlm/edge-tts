@@ -1,126 +1,163 @@
-# 在 1Panel 使用 Python 部署 Edge TTS HTTP 服务
+# 在 1Panel 部署 Edge TTS（Docker-only）
 
-本文适用于不使用 Docker、希望通过 1Panel Python 运行环境部署本项目的场景。示例路径为 `/opt/edge-tts`，配置文件单独保存在 `/opt/edge-tts-data/config.yaml`，更新代码时不会覆盖 API Key。
+本项目在 1Panel 只维护 Docker-only 部署，不再使用面板的语言运行时。这样线上版本、依赖和 GitHub Action 验证过的镜像保持一致。在线镜像支持 amd64/arm64；离线 tar 只支持 amd64。
 
-## 1. 上传并解压代码包
+## 准备目录和文件
 
-从 GitHub 下载本仓库的 Source code ZIP，或在本地把源码打成 ZIP。不要上传 Windows EXE 发布包。
-
-在 1Panel 的“文件”页面创建 `/opt/edge-tts`，上传 ZIP 并解压。整理目录后，以下文件应直接存在：
-
-```text
-/opt/edge-tts/setup.py
-/opt/edge-tts/config.example.yaml
-/opt/edge-tts/src/
-```
-
-如果解压后多了一层目录，请把该目录中的源码移到 `/opt/edge-tts`。
-
-## 2. 创建外置配置
-
-在 1Panel 终端执行：
+在 1Panel“文件”中创建 `/opt/edge-tts`，上传仓库中的 `compose.yaml`、`config.example.yaml`，然后复制示例：
 
 ```bash
-mkdir -p /opt/edge-tts-data
-cp /opt/edge-tts/config.example.yaml /opt/edge-tts-data/config.yaml
+cd /opt/edge-tts
+cp config.example.yaml config.yaml
+chown 10001:10001 config.yaml
+chmod 600 config.yaml
 ```
 
-使用 1Panel 文件编辑器打开 `/opt/edge-tts-data/config.yaml`：
+镜像内服务用户固定为 UID/GID `10001`，上述所有权设置可让非 root 容器读取只读挂载的 Key。
+
+编辑 `config.yaml`：
 
 ```yaml
-api_key: "替换成足够长的随机密钥"
+api_key: "替换成至少 32 字节的随机密钥"
 host: "0.0.0.0"
 port: 5050
+max_text_length: 5000
+max_request_bytes: 65536
+max_concurrent_requests: 4
+request_timeout_seconds: 120
+max_audio_bytes: 20971520
+docs_enabled: false
 ```
 
-可执行下面的命令生成随机 Key，然后填入 `api_key`：
+可在 1Panel 终端生成 Key：
 
 ```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+openssl rand -base64 32
 ```
 
-客户端必须在 `X-API-Key` 请求头中提交这个 Key。不要把真实的 `config.yaml` 上传到 GitHub、写入镜像或发到聊天记录。
+不要把真实 Key 写入 `compose.yaml`、镜像、Git 仓库或聊天记录。
 
-## 3. 创建 Python 3.12 运行环境
+## 方式一：在线拉取 GHCR
 
-在 1Panel 的“网站”或“运行环境”页面安装 Python 3.12。也可以在终端使用服务器已有的 Python 3.12 创建虚拟环境：
-
-```bash
-cd /opt/edge-tts
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install .
-```
-
-安装完成后，可以先在终端前台验证服务：
+固定版本，避免 `latest` 意外升级：
 
 ```bash
 cd /opt/edge-tts
-source .venv/bin/activate
-python -m edge_tts_server --config /opt/edge-tts-data/config.yaml
+echo 'EDGE_TTS_IMAGE_TAG=7.3.0' > .env
+docker pull ghcr.io/jwwsjlm/edge-tts:7.3.0
+docker compose -f compose.yaml up -d
 ```
 
-看到服务监听 `0.0.0.0:5050` 后，按 `Ctrl+C` 停止前台进程。
+镜像支持 `linux/amd64` 和 `linux/arm64`。如果 GHCR Package 不是 Public，先在终端使用有 `read:packages` 权限的 GitHub Token 执行 `docker login ghcr.io`。
 
-## 4. 在 1Panel 中创建 Python 应用
+## 方式二：上传离线 amd64 镜像
 
-在 1Panel 新建 Python 运行环境或 Python 应用，并填写：
+从 GitHub Release 下载并通过 1Panel“文件”上传到 `/opt/edge-tts`：
 
-- 应用目录：`/opt/edge-tts`
-- Python 版本：Python 3.12
-- 启动命令：`/opt/edge-tts/.venv/bin/python -m edge_tts_server --config /opt/edge-tts-data/config.yaml`
-- 监听端口：`5050`
-- 环境变量：`PYTHONUNBUFFERED=1`
+- `edge-tts-server-linux-amd64.tar.gz`
+- `SHA256SUMS.txt`
 
-保存并启动应用。确保运行应用的系统用户对 `/opt/edge-tts-data/config.yaml` 只有必要的读取权限。
-
-## 5. 健康检查与接口调用
-
-先在服务器本机检查无需 Key 的健康接口：
+如果同时上传了 Release 的所有资产，可完整校验：
 
 ```bash
+cd /opt/edge-tts
+sha256sum -c SHA256SUMS.txt
+```
+
+只上传 Linux tar 时：
+
+```bash
+grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
+```
+
+导入并检查镜像：
+
+```bash
+gzip -dc edge-tts-server-linux-amd64.tar.gz | docker load
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.3.0 >/dev/null
+```
+
+创建 `.env` 并启动：
+
+```bash
+echo 'EDGE_TTS_IMAGE_TAG=7.3.0' > .env
+docker compose -f compose.yaml up -d
+```
+
+Compose 的 `pull_policy: missing` 会使用刚导入的本地镜像。arm64 服务器不能使用此 tar，请在线拉取镜像。
+
+## 状态、日志与健康检查
+
+```bash
+cd /opt/edge-tts
+docker compose -f compose.yaml ps
+docker compose -f compose.yaml logs -f --tail=200
 curl http://127.0.0.1:5050/health
 ```
 
-正常响应为：
+健康响应：
 
 ```json
-{"status": "ok"}
+{"status":"ok"}
 ```
 
-再测试需要 Key 的语音接口：
+测试语音：
 
 ```bash
 curl -X POST http://127.0.0.1:5050/v1/tts \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: 替换成config中的密钥" \
-  -d '{"text":"你好，这是 1Panel 部署测试。","voice":"zh-CN-XiaoxiaoNeural"}' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: 替换成config中的密钥' \
+  -d '{"text":"1Panel Docker 部署成功","voice":"zh-CN-XiaoxiaoNeural"}' \
   --output speech.mp3
 ```
 
-## 6. 配置反向代理和 HTTPS
+容器内部使用端口 `5050`。Compose 还设置了 DNS `223.5.5.5`、`119.29.29.29`、只读文件系统、非 root、能力清空和 `no-new-privileges`。
 
-在 1Panel 的“网站”页面绑定域名，并把反向代理地址设为 `http://127.0.0.1:5050`。申请或上传 TLS 证书后启用 HTTPS，并建议开启强制 HTTPS。
+## 反向代理与 HTTPS
 
-完成后访问：
+1. 在 1Panel“网站”中创建反向代理网站并绑定域名。
+2. 上游地址填 `http://127.0.0.1:5050`。
+3. 申请或上传证书，开启 HTTPS 和强制 HTTPS。
+4. 在云安全组和系统防火墙中禁止公网直接访问 `5050`，只开放 `80/443`。
+5. 如需额外防盗刷，可在反向代理按 IP 设置频率和并发限制；服务本身仍会校验 `X-API-Key`。
+
+代理完成后验证：
 
 ```bash
 curl https://tts.example.com/health
 ```
 
-公网客户端应调用 `https://tts.example.com/v1/tts`。如果只通过反向代理访问，请不要在云安全组或系统防火墙中向公网开放 `5050` 端口。
+## 升级
 
-## 7. 更新和重启
-
-更新前先在 1Panel 停止 Python 应用，然后上传并解压新的 Source code ZIP 到 `/opt/edge-tts`。不要删除或覆盖 `/opt/edge-tts-data/config.yaml`。
-
-重新安装项目并启动应用：
+先备份当前标签与配置：
 
 ```bash
 cd /opt/edge-tts
-source .venv/bin/activate
-pip install --upgrade .
+cp .env .env.rollback
+cp config.yaml config.yaml.backup
 ```
 
-最后再次请求 `/health`，并调用一次 `/v1/tts`。修改 `config.yaml` 或轮换 `api_key` 后，也需要在 1Panel 中重启应用。
+在线升级时拉取新版本、修改 `.env`，再重建容器：
+
+```bash
+docker pull ghcr.io/jwwsjlm/edge-tts:NEW_VERSION
+echo 'EDGE_TTS_IMAGE_TAG=NEW_VERSION' > .env
+docker compose -f compose.yaml up -d
+curl http://127.0.0.1:5050/health
+```
+
+离线升级则先校验并 `docker load` 新 tar，再执行相同的 Compose 命令。升级后调用一次 `/v1/tts`，不要只看容器状态。
+
+## 回滚
+
+新版本异常时恢复旧标签：
+
+```bash
+cd /opt/edge-tts
+cp .env.rollback .env
+docker compose -f compose.yaml up -d
+docker compose -f compose.yaml logs --tail=200
+curl http://127.0.0.1:5050/health
+```
+
+只读挂载的 `config.yaml` 独立于容器，升级和回滚不会覆盖 API Key。确认旧版本正常后再清理不用的镜像。
