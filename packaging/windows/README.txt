@@ -1,6 +1,8 @@
 Edge TTS HTTP Server - Windows 使用说明
 ========================================
 
+此压缩包包含 Python 解释器和全部运行库，目标电脑无需安装 Python，运行时无需联网安装依赖。
+
 1. 双击 edge-tts-server.exe。
 2. 首次启动会在 EXE 同目录生成 config.yaml，并自动生成随机 API Key。
 3. 请妥善保存 config.yaml，不要把 api_key 发给其他人。
@@ -22,6 +24,12 @@ Edge TTS HTTP Server - Windows 使用说明
     api_key: "你的长随机密钥"
     host: "127.0.0.1"
     port: 5050
+    max_text_length: 5000
+    max_request_bytes: 65536
+    max_concurrent_requests: 4
+    request_timeout_seconds: 120
+    max_audio_bytes: 20971520
+    docs_enabled: false
 
 修改 config.yaml 后需要重启 EXE。除非明确需要局域网访问，否则不要把 host 改成 0.0.0.0。
 服务器与 Docker 部署请查看项目仓库中的 docs/docker.md，并在公网部署时使用 HTTPS 反向代理。

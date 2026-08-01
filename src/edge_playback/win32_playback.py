@@ -12,7 +12,13 @@ def play_mp3_win32(mp3_fname: str) -> None:
         raise NotImplementedError("Function only available on Windows")
 
     # pylint: disable-next=import-outside-toplevel
-    from ctypes import create_unicode_buffer, windll, wintypes  # type: ignore
+    import ctypes
+
+    # pylint: disable-next=import-outside-toplevel
+    from ctypes import wintypes
+
+    create_unicode_buffer = ctypes.create_unicode_buffer
+    windll = getattr(ctypes, "windll")
 
     _get_short_path_name_w = windll.kernel32.GetShortPathNameW
     _get_short_path_name_w.argtypes = [

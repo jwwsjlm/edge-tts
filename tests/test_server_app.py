@@ -4,13 +4,14 @@
 
 import asyncio
 import logging
+import subprocess
+import sys
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Tuple, Type
 
 import aiohttp
 import httpx
 import pytest
-import uvicorn
 
 from edge_tts import exceptions
 from edge_tts_server.app import create_app
@@ -416,6 +417,7 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
     assert docs.status_code == 200
     assert "Swagger UI" in docs.text
     assert schema_response.status_code == 200
+    assert schema["info"]["version"] == "7.3.0"
     assert schema["components"]["securitySchemes"]["APIKeyHeader"] == {
         "type": "apiKey",
         "in": "header",
@@ -424,18 +426,32 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
     assert schema["paths"]["/v1/tts"]["post"]["security"] == [{"APIKeyHeader": []}]
 
 
-@pytest.mark.asyncio
-async def test_uvicorn_defaults_emit_the_safe_access_log(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_uvicorn_defaults_emit_the_safe_access_log() -> None:
     """The production Uvicorn logger should emit the custom access record."""
-    app = create_app(CONFIG)
+    script = """
+import asyncio
+import httpx
+import uvicorn
+from edge_tts_server.app import create_app
+from edge_tts_server.config import ServerConfig
+
+async def main():
+    app = create_app(ServerConfig(api_key="secret"))
     uvicorn.Config(app, access_log=False)
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health")
+    print(response.headers["X-Request-ID"])
 
-    captured = capsys.readouterr()
-    assert response.headers["X-Request-ID"] in captured.err
+asyncio.run(main())
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    request_id = completed.stdout.strip()
+    assert len(request_id) == 32
+    assert request_id in completed.stderr

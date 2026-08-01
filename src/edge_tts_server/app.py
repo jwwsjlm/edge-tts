@@ -20,6 +20,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from edge_tts import Communicate, exceptions
 from edge_tts.data_classes import TTSConfig
+from edge_tts.version import __version__
 
 from .config import ServerConfig
 from .models import ErrorResponse, TTSRequest
@@ -282,7 +283,7 @@ def create_app(
     openapi_url = "/openapi.json" if config.docs_enabled else None
     app = FastAPI(
         title="Edge TTS HTTP Server",
-        version="1.0.0",
+        version=__version__,
         docs_url=docs_url,
         redoc_url=None,
         openapi_url=openapi_url,

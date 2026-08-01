@@ -11,7 +11,12 @@ analysis = Analysis(
     pathex=[str(ROOT / "src")],
     binaries=[],
     datas=[],
-    hiddenimports=collect_submodules("edge_tts_server"),
+    hiddenimports=(
+        collect_submodules("edge_tts_server")
+        + collect_submodules("fastapi")
+        + collect_submodules("pydantic")
+        + collect_submodules("uvicorn")
+    ),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

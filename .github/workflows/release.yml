@@ -3,14 +3,14 @@ name: Publish HTTP server release
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
 
 permissions:
   contents: read
 
 jobs:
   validate:
-    name: Test and validate tag
+    name: Test and validate stable tag
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -18,20 +18,30 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate release version
-        id: version
-        shell: bash
-        run: |
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
-            exit 1
-          fi
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Python
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate tag against package version
+        id: version
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Only stable vX.Y.Z tags can be released: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          package_version="$(python - <<'PY'
+          import runpy
+          print(runpy.run_path("src/edge_tts/version.py")["__version__"])
+          PY
+          )"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [[ "$tag_version" != "$package_version" ]]; then
+            echo "Tag $tag_version does not match package $package_version" >&2
+            exit 1
+          fi
+          echo "version=$tag_version" >> "$GITHUB_OUTPUT"
 
       - name: Install test dependencies
         run: python -m pip install -e ".[dev]"
@@ -39,29 +49,30 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
+      - name: Check formatting
+        run: |
+          python -m black --check --diff .
+          python -m isort --check-only --diff .
+
       - name: Run type checks
         run: python -m mypy --pretty src examples tests
 
       - name: Run lint checks
         run: python -m pylint src examples tests
 
-      - name: Check formatting
-        run: |
-          python -m isort --check-only --diff .
-          python -m black --check --diff .
-
   windows:
     name: Build Windows x64 release
     needs: validate
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.12 x64
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          architecture: x64
 
       - name: Install runtime and PyInstaller
         run: python -m pip install . pyinstaller
@@ -78,12 +89,15 @@ jobs:
           if-no-files-found: error
 
   docker:
-    name: Publish multi-platform Docker image
+    name: Verify and publish Docker images
     needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -94,6 +108,94 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build loadable native amd64 image
+        shell: bash
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag "$IMAGE:$VERSION" \
+            .
+
+      - name: Smoke-test native amd64 image
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() { docker rm -f edge-tts-smoke >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name edge-tts-smoke \
+            --publish 127.0.0.1:5050:5050 \
+            --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges --init \
+            --volume "$PWD/config.example.yaml:/config/config.yaml:ro" \
+            "$IMAGE:$VERSION"
+          health_code=""
+          for _ in {1..60}; do
+            health_code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              http://127.0.0.1:5050/health || true)"
+            [[ "$health_code" == "200" ]] && break
+            sleep 1
+          done
+          if [[ "$health_code" != "200" ]]; then
+            docker logs edge-tts-smoke
+            exit 1
+          fi
+          unauthorized_code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request POST --header 'Content-Type: application/json' \
+            --data '{"text":"release smoke test"}' \
+            http://127.0.0.1:5050/v1/tts)"
+          [[ "$unauthorized_code" == "401" ]]
+
+      - name: Export offline amd64 image
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          docker save "$IMAGE:$VERSION" | gzip -9 \
+            > release-assets/edge-tts-server-linux-amd64.tar.gz
+
+      - name: Reload offline amd64 image
+        shell: bash
+        run: |
+          docker image rm "$IMAGE:$VERSION"
+          gzip --decompress --stdout release-assets/edge-tts-server-linux-amd64.tar.gz \
+            | docker load
+
+      - name: Smoke-test reloaded offline image
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() { docker rm -f edge-tts-smoke >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name edge-tts-smoke \
+            --publish 127.0.0.1:5050:5050 \
+            --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges --init \
+            --volume "$PWD/config.example.yaml:/config/config.yaml:ro" \
+            "$IMAGE:$VERSION"
+          health_code=""
+          for _ in {1..60}; do
+            health_code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              http://127.0.0.1:5050/health || true)"
+            [[ "$health_code" == "200" ]] && break
+            sleep 1
+          done
+          if [[ "$health_code" != "200" ]]; then
+            docker logs edge-tts-smoke
+            exit 1
+          fi
+          unauthorized_code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request POST --header 'Content-Type: application/json' \
+            --data '{"text":"release smoke test"}' \
+            http://127.0.0.1:5050/v1/tts)"
+          [[ "$unauthorized_code" == "401" ]]
+
+      - name: Upload offline amd64 image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-offline-release
+          path: release-assets/edge-tts-server-linux-amd64.tar.gz
+          if-no-files-found: error
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -101,7 +203,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push multi-platform image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -132,6 +234,21 @@ jobs:
           name: windows-release
           path: release-assets
 
+      - name: Download offline amd64 image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-offline-release
+          path: release-assets
+
+      - name: Create SHA-256 checksums
+        shell: bash
+        run: |
+          cd release-assets
+          sha256sum \
+            edge-tts-server-windows-x64.zip \
+            edge-tts-server-linux-amd64.tar.gz \
+            | sort --key=2 > SHA256SUMS.txt
+
       - name: Render release deployment guide
         env:
           GH_TOKEN: ${{ github.token }}
@@ -152,6 +269,8 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "release-assets/edge-tts-server-windows-x64.zip#Windows x64 standalone server" \
+            "release-assets/edge-tts-server-linux-amd64.tar.gz#Linux amd64 offline Docker image" \
+            "release-assets/SHA256SUMS.txt#SHA-256 checksums" \
             --verify-tag \
             --title "Edge TTS HTTP Server ${VERSION}" \
             --notes-file release-notes.rendered.md

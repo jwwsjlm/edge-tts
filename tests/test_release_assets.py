@@ -1,5 +1,6 @@
 """Static contracts for distributable release assets."""
 
+import runpy
 import subprocess
 from pathlib import Path
 from typing import Any, Dict
@@ -7,6 +8,14 @@ from typing import Any, Dict
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+HARDENED_LIMITS = {
+    "max_text_length": 5000,
+    "max_request_bytes": 65536,
+    "max_concurrent_requests": 4,
+    "request_timeout_seconds": 120,
+    "max_audio_bytes": 20971520,
+    "docs_enabled": False,
+}
 
 
 def load_yaml_mapping(path: Path) -> Dict[str, Any]:
@@ -38,6 +47,7 @@ def test_windows_example_config_is_safe_for_local_first_use() -> None:
         "api_key": "CHANGE_ME_TO_A_LONG_RANDOM_SECRET",
         "host": "127.0.0.1",
         "port": 5050,
+        **HARDENED_LIMITS,
     }
 
 
@@ -73,6 +83,14 @@ def test_pyinstaller_entry_uses_package_absolute_import() -> None:
     assert "from edge_tts_server.cli import main" in entry
 
 
+def test_pyinstaller_collects_fastapi_runtime_modules() -> None:
+    """The standalone EXE must include framework modules loaded dynamically."""
+    spec = (ROOT / "edge-tts-server.spec").read_text(encoding="utf-8")
+
+    for package in ("fastapi", "pydantic", "uvicorn"):
+        assert f'collect_submodules("{package}")' in spec
+
+
 def test_windows_instructions_cover_double_click_and_api_key() -> None:
     """Archive-local help should be enough for first-time use."""
     readme = (ROOT / "packaging/windows/README.txt").read_text(encoding="utf-8")
@@ -83,6 +101,8 @@ def test_windows_instructions_cover_double_click_and_api_key() -> None:
     assert "X-API-Key" in readme
     assert "X-API-Key" in example
     assert "speech.mp3" in example
+    assert "无需安装 Python" in readme
+    assert "无需联网" in readme
 
 
 def test_docker_assets_define_non_root_healthy_service() -> None:
@@ -91,9 +111,11 @@ def test_docker_assets_define_non_root_healthy_service() -> None:
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
     for required in (
-        "python:3.12-slim",
+        "FROM python:3.12-slim AS builder",
+        "COPY --from=builder",
         "USER edge-tts",
         "EXPOSE 5050",
+        "STOPSIGNAL SIGTERM",
         "HEALTHCHECK",
         "/health",
         'ENTRYPOINT ["python", "-m", "edge_tts_server"]',
@@ -114,6 +136,7 @@ def test_docker_example_listens_on_all_interfaces() -> None:
         "api_key": "CHANGE_ME_TO_A_LONG_RANDOM_SECRET",
         "host": "0.0.0.0",
         "port": 5050,
+        **HARDENED_LIMITS,
     }
 
 
@@ -181,11 +204,20 @@ def test_release_workflow_builds_expected_targets_and_notes() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     for required in (
-        "v*",
+        "v*.*.*",
+        "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+        "runpy.run_path",
+        "src/edge_tts/version.py",
         "build_windows_release.ps1",
         "edge-tts-server-windows-x64.zip",
         "linux/amd64,linux/arm64",
         "ghcr.io/${{ github.repository }}",
+        "edge-tts-server-linux-amd64.tar.gz",
+        "SHA256SUMS.txt",
+        "docker load",
+        "Smoke-test native amd64 image",
+        "Smoke-test reloaded offline image",
+        "401",
         ".github/release-notes.md",
         "gh release create",
         "--verify-tag",
@@ -204,6 +236,12 @@ def test_compose_files_have_shared_runtime_contract() -> None:
         assert service["ports"] == ["5050:5050"]
         assert service["volumes"] == ["./config.yaml:/config/config.yaml:ro"]
         assert service["dns"] == ["223.5.5.5", "119.29.29.29"]
+        assert service["read_only"] is True
+        assert service["tmpfs"] == ["/tmp:size=64m,mode=1777"]
+        assert service["cap_drop"] == ["ALL"]
+        assert service["security_opt"] == ["no-new-privileges:true"]
+        assert service["init"] is True
+        assert service["stop_grace_period"] == "30s"
 
 
 def test_production_compose_uses_overridable_ghcr_image() -> None:
@@ -213,6 +251,7 @@ def test_production_compose_uses_overridable_ghcr_image() -> None:
     assert service["image"] == (
         "ghcr.io/jwwsjlm/edge-tts:${EDGE_TTS_IMAGE_TAG:-latest}"
     )
+    assert service["pull_policy"] == "missing"
     assert "build" not in service
 
 
@@ -263,7 +302,15 @@ def test_root_config_example_is_server_ready() -> None:
         "api_key": "CHANGE_ME_TO_A_LONG_RANDOM_SECRET",
         "host": "0.0.0.0",
         "port": 5050,
+        **HARDENED_LIMITS,
     }
+
+
+def test_release_version_is_7_3_0() -> None:
+    """The package version is the source of truth for the release tag."""
+    namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
+
+    assert namespace["__version__"] == "7.3.0"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:

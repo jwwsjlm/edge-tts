@@ -6,6 +6,15 @@ services:
     image: edge-tts-http:local
     container_name: edge-tts
     restart: unless-stopped
+    init: true
+    read_only: true
+    stop_grace_period: 30s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     ports:
       - "5050:5050"
     volumes:
