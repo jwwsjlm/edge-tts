@@ -141,3 +141,34 @@ def test_main_readme_links_http_and_docker_usage() -> None:
     assert "edge-tts-server" in readme
     assert "POST /v1/tts" in readme
     assert "docs/docker.md" in readme
+
+
+def test_release_workflow_gates_all_publish_jobs() -> None:
+    """Tag releases should test before publishing every target."""
+    path = ROOT / ".github/workflows/release.yml"
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert set(jobs) == {"validate", "windows", "docker", "release"}
+    assert jobs["windows"]["needs"] == "validate"
+    assert jobs["docker"]["needs"] == "validate"
+    assert set(jobs["release"]["needs"]) == {"validate", "windows", "docker"}
+    assert jobs["docker"]["permissions"]["packages"] == "write"
+    assert jobs["release"]["permissions"]["contents"] == "write"
+
+
+def test_release_workflow_builds_expected_targets_and_notes() -> None:
+    """The workflow should publish the agreed assets and deployment notes."""
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    for required in (
+        "v*",
+        "build_windows_release.ps1",
+        "edge-tts-server-windows-x64.zip",
+        "linux/amd64,linux/arm64",
+        "ghcr.io/${{ github.repository }}",
+        ".github/release-notes.md",
+        "gh release create",
+        "--verify-tag",
+    ):
+        assert required in workflow
