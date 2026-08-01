@@ -133,7 +133,8 @@ def test_docker_assets_define_non_root_healthy_service() -> None:
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
     for required in (
-        "FROM python:3.12-slim AS builder",
+        "FROM python:3.14-slim AS builder",
+        "FROM python:3.14-slim AS runtime",
         "COPY --from=builder",
         "groupadd --gid 10001 edge-tts",
         "useradd --uid 10001",
@@ -147,6 +148,7 @@ def test_docker_assets_define_non_root_healthy_service() -> None:
         "yaml.safe_load",
     ):
         assert required in dockerfile
+    assert dockerfile.count("FROM python:3.14-slim") == 2
     assert ".git" in dockerignore
     assert "releases" in dockerignore
 
@@ -238,6 +240,23 @@ def test_release_workflow_gates_all_publish_jobs() -> None:
     assert set(jobs["release"]["needs"]) == {"validate", "windows", "docker"}
     assert jobs["docker"]["permissions"]["packages"] == "write"
     assert jobs["release"]["permissions"]["contents"] == "write"
+
+
+def test_automation_pins_python_3_14() -> None:
+    """Maintained automation should use the release build Python version."""
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    quality = (ROOT / ".github/workflows/code-quality.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert release.count('python-version: "3.14"') == 2
+    assert "Set up Python 3.14" in release
+    assert "Set up Python 3.14 x64" in release
+    assert "3.12" not in release
+    assert "actions/checkout@v4" in quality
+    assert "actions/setup-python@v5" in quality
+    assert quality.count('python-version: "3.14"') == 1
+    assert "python-version: 3.x" not in quality
 
 
 def test_release_workflow_builds_expected_targets_and_notes() -> None:
@@ -348,11 +367,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_3_0() -> None:
+def test_release_version_is_7_3_1() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.3.0"
+    assert namespace["__version__"] == "7.3.1"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
