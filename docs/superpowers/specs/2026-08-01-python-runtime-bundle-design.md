@@ -95,3 +95,7 @@ Action 在打包后使用一个全新的 `python:3.14-slim` 容器进行无网�
 - 不支持 Alpine/musl、Linux arm64 或 Windows Python 目录包；Windows 继续使用独立 EXE。
 - 不改变 HTTP API、配置字段、鉴权、资源限制或 Docker/Compose 契约。
 - 不引入自动更新、流式响应、数据库或额外服务管理脚本。
+
+## 发布执行修订
+
+首次执行使用 `v7.3.2`，bundle 构建成功，但冒烟步骤把 tar 解压到构建阶段遗留的同名 root-owned staging 目录，因文件已存在而失败；Release Job 被依赖门禁正确跳过。失败 Tag 保留用于审计，不覆盖、不移动。工作流增加“解压前删除 staging 目录”的回归测试和最小修复，正式完整发布版本顺延为 `v7.3.3`。

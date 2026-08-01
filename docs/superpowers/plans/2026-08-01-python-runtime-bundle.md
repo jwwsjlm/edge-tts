@@ -575,3 +575,7 @@ SHA256SUMS.txt
 ```
 
 Expected GHCR tags include `7.3.2` and `latest`.
+
+## Execution note
+
+The first `v7.3.2` run built the bundle but failed before its runtime smoke-test because the Action extracted the tar over the root-owned staging directory left by the build container. Release creation was correctly skipped. The failed Tag remains immutable for audit; a regression test now requires staging cleanup before extraction, and the complete retry is released as `v7.3.3`.
