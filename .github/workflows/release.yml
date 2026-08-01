@@ -88,6 +88,54 @@ jobs:
           path: releases/windows/edge-tts-server-windows-x64.zip
           if-no-files-found: error
 
+  python_bundle:
+    name: Build clean Python 3.14 runtime bundle
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build clean Python 3.14 runtime bundle
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          docker run --rm --platform linux/amd64 \
+            --volume "$PWD:/workspace" --workdir /workspace \
+            python:3.14-slim \
+            python3.14 packaging/python/build_bundle.py release-assets
+
+      - name: Smoke-test clean Python bundle without network
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          tar -xzf edge-tts-server-python314-linux-amd64.tar.gz
+          cp edge-tts-server-python314-linux-amd64/config.example.yaml \
+            edge-tts-server-python314-linux-amd64/config.yaml
+          docker run --rm --network none --platform linux/amd64 \
+            --volume "$PWD/edge-tts-server-python314-linux-amd64:/bundle" \
+            --workdir /bundle python:3.14-slim sh -euc '
+              python3.14 run.py >/tmp/server.log 2>&1 &
+              server_pid=$!
+              trap "kill $server_pid 2>/dev/null || true" EXIT
+              for attempt in $(seq 1 40); do
+                if python3.14 -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5050/health\", timeout=1).read()"; then
+                  exit 0
+                fi
+                sleep 0.25
+              done
+              cat /tmp/server.log
+              exit 1
+            '
+
+      - name: Upload clean Python bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-runtime-release
+          path: release-assets/edge-tts-server-python314-linux-amd64.tar.gz
+          if-no-files-found: error
+
   docker:
     name: Verify and publish Docker images
     needs: validate
@@ -220,6 +268,7 @@ jobs:
     needs:
       - validate
       - windows
+      - python_bundle
       - docker
     runs-on: ubuntu-latest
     permissions:
@@ -240,12 +289,19 @@ jobs:
           name: docker-offline-release
           path: release-assets
 
+      - name: Download clean Python bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: python-runtime-release
+          path: release-assets
+
       - name: Create SHA-256 checksums
         shell: bash
         run: |
           cd release-assets
           sha256sum \
             edge-tts-server-windows-x64.zip \
+            edge-tts-server-python314-linux-amd64.tar.gz \
             edge-tts-server-linux-amd64.tar.gz \
             | sort --key=2 > SHA256SUMS.txt
 
@@ -269,6 +325,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "release-assets/edge-tts-server-windows-x64.zip#Windows x64 standalone server" \
+            "release-assets/edge-tts-server-python314-linux-amd64.tar.gz#Linux amd64 Python 3.14 clean runtime bundle" \
             "release-assets/edge-tts-server-linux-amd64.tar.gz#Linux amd64 offline Docker image" \
             "release-assets/SHA256SUMS.txt#SHA-256 checksums" \
             --verify-tag \

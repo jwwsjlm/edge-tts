@@ -1,12 +1,13 @@
 # Edge TTS HTTP Server __VERSION__
 
-本次 Release 提供 Windows x64 独立包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，保留 `POST /v1/tts`、`GET /health`、`X-API-Key` 与稳定错误 JSON。
+本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，保留 `POST /v1/tts`、`GET /health`、`X-API-Key` 与稳定错误 JSON。
 
 ## Release 资产
 
 - `edge-tts-server-windows-x64.zip`：使用 Python 3.14 x64 构建，可双击运行，目标电脑无需安装 Python 或联网安装依赖。
+- `edge-tts-server-python314-linux-amd64.tar.gz`：项目源码和依赖均位于 `libs/`，无需执行 `pip install`。
 - `edge-tts-server-linux-amd64.tar.gz`：可上传到离线 Docker/1Panel 服务器。
-- `SHA256SUMS.txt`：上述两个资产的 SHA-256。
+- `SHA256SUMS.txt`：上述三个资产的 SHA-256。
 - 在线镜像：`__IMAGE__:__VERSION__` 与 `__IMAGE__:latest`，支持 `linux/amd64`、`linux/arm64`。
 
 下载全部资产后校验：
@@ -29,6 +30,20 @@ grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
 4. 在同目录运行 `call-example.ps1`，生成 `speech.mp3`。
 
 压缩包内已包含 Python 解释器、运行库、配置示例、PowerShell 示例和中文说明。语音合成时仍需访问微软 TTS 上游。
+
+## Linux Python 纯净运行包
+
+该包适用于使用 glibc 的 Linux amd64 主机，服务器必须已安装 Python 3.14。不支持 Alpine/musl，也不包含 Python 解释器。运行时无需安装依赖，压缩包内不包含 Markdown 或 shell 启动脚本。
+
+```bash
+tar -xzf edge-tts-server-python314-linux-amd64.tar.gz
+cd edge-tts-server-python314-linux-amd64
+cp config.example.yaml config.yaml
+# 编辑 config.yaml，替换 api_key
+python3.14 run.py
+```
+
+首次直接运行且没有 `config.yaml` 时，服务也会在运行包目录创建带随机 API Key 的配置。生产环境应先检查并保存 Key，再通过反向代理开放服务。
 
 ## config.yaml
 

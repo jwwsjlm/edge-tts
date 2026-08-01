@@ -90,6 +90,8 @@ def test_python_bundle_builder_creates_clean_single_root_archive(
         (libs / "edge_tts").mkdir(parents=True)
         (libs / "edge_tts_server").mkdir()
         (libs / "edge_playback").mkdir()
+        (libs / "bin").mkdir()
+        (libs / "bin" / "edge-tts-server").write_text("remove", encoding="utf-8")
         (libs / "dependency" / "__pycache__").mkdir(parents=True)
         (libs / "dependency" / "README.md").write_text("remove", encoding="utf-8")
         (libs / "dependency" / "module.pyc").write_bytes(b"remove")
@@ -110,6 +112,7 @@ def test_python_bundle_builder_creates_clean_single_root_archive(
         "LICENSE",
     }
     assert not (bundle / "libs/edge_playback").exists()
+    assert not (bundle / "libs/bin").exists()
     assert not list(bundle.rglob("*.md"))
     assert not list(bundle.rglob("*.pyc"))
     assert not list(bundle.rglob("__pycache__"))
@@ -326,10 +329,22 @@ def test_release_workflow_gates_all_publish_jobs() -> None:
     workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
 
-    assert set(jobs) == {"validate", "windows", "docker", "release"}
+    assert set(jobs) == {
+        "validate",
+        "windows",
+        "python_bundle",
+        "docker",
+        "release",
+    }
     assert jobs["windows"]["needs"] == "validate"
+    assert jobs["python_bundle"]["needs"] == "validate"
     assert jobs["docker"]["needs"] == "validate"
-    assert set(jobs["release"]["needs"]) == {"validate", "windows", "docker"}
+    assert set(jobs["release"]["needs"]) == {
+        "validate",
+        "windows",
+        "python_bundle",
+        "docker",
+    }
     assert jobs["docker"]["permissions"]["packages"] == "write"
     assert jobs["release"]["permissions"]["contents"] == "write"
 
@@ -360,6 +375,13 @@ def test_release_workflow_builds_expected_targets_and_notes() -> None:
         "src/edge_tts/version.py",
         "build_windows_release.ps1",
         "edge-tts-server-windows-x64.zip",
+        "Build clean Python 3.14 runtime bundle",
+        "Smoke-test clean Python bundle without network",
+        "python:3.14-slim",
+        "--platform linux/amd64",
+        "--network none",
+        "python3.14 run.py",
+        "edge-tts-server-python314-linux-amd64.tar.gz",
         "linux/amd64,linux/arm64",
         "ghcr.io/${{ github.repository }}",
         "edge-tts-server-linux-amd64.tar.gz",
@@ -373,6 +395,22 @@ def test_release_workflow_builds_expected_targets_and_notes() -> None:
         "--verify-tag",
     ):
         assert required in workflow
+
+
+def test_release_notes_document_clean_python_bundle() -> None:
+    """The generated Release must explain the pip-free Python asset."""
+    notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
+    for required in (
+        "edge-tts-server-python314-linux-amd64.tar.gz",
+        "Python 3.14",
+        "Linux amd64",
+        "glibc",
+        "不支持 Alpine",
+        "config.example.yaml",
+        "python3.14 run.py",
+    ):
+        assert required in notes
+    assert "start.sh" not in notes
 
 
 def test_compose_files_have_shared_runtime_contract() -> None:

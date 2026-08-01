@@ -36,6 +36,9 @@ def _remove_forbidden(root: Path) -> None:
     playback = root / "edge_playback"
     if playback.exists():
         shutil.rmtree(playback)
+    scripts = root / "bin"
+    if scripts.exists():
+        shutil.rmtree(scripts)
     for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if not path.exists():
             continue
