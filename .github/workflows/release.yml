@@ -110,6 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
+          rm -rf edge-tts-server-python314-linux-amd64
           tar -xzf edge-tts-server-python314-linux-amd64.tar.gz
           cp edge-tts-server-python314-linux-amd64/config.example.yaml \
             edge-tts-server-python314-linux-amd64/config.yaml

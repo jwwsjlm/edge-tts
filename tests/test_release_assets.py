@@ -415,6 +415,16 @@ def test_release_notes_document_clean_python_bundle() -> None:
     assert "start.sh" not in notes
 
 
+def test_python_bundle_smoke_removes_staging_before_extracting() -> None:
+    """The smoke test must not extract over the root-owned build staging tree."""
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    cleanup = "rm -rf edge-tts-server-python314-linux-amd64"
+    extract = "tar -xzf edge-tts-server-python314-linux-amd64.tar.gz"
+
+    assert cleanup in workflow
+    assert workflow.index(cleanup) < workflow.index(extract)
+
+
 def test_compose_files_have_shared_runtime_contract() -> None:
     """Production and development Compose files should run independently."""
     for filename in ("compose.yaml", "compose.dev.yaml"):
