@@ -2,6 +2,7 @@
 
 import runpy
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -36,6 +37,27 @@ def test_windows_release_assets_are_complete() -> None:
     ]
 
     assert all(path.is_file() for path in expected)
+
+
+def test_win32_playback_typechecks_on_release_platforms() -> None:
+    """Platform guards must type-check on Linux CI and Windows builders."""
+    for platform in ("linux", "win32"):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "mypy",
+                "--pretty",
+                "--platform",
+                platform,
+                "src/edge_playback/win32_playback.py",
+            ],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 def test_windows_example_config_is_safe_for_local_first_use() -> None:

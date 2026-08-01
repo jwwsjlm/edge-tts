@@ -5,10 +5,14 @@ import sys
 from .util import pr_err
 
 
+def _running_on_windows() -> bool:
+    return sys.platform == "win32"
+
+
 def play_mp3_win32(mp3_fname: str) -> None:
     """Play mp3 file with given path using win32 API"""
 
-    if sys.platform != "win32":
+    if not _running_on_windows():
         raise NotImplementedError("Function only available on Windows")
 
     # pylint: disable-next=import-outside-toplevel
