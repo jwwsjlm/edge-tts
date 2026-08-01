@@ -1,0 +1,12 @@
+services:
+  edge-tts:
+    image: ghcr.io/jwwsjlm/edge-tts:${EDGE_TTS_IMAGE_TAG:-latest}
+    container_name: edge-tts
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29

@@ -1,10 +1,18 @@
 """Static contracts for distributable release assets."""
 
 from pathlib import Path
+from typing import Any, Dict
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_yaml_mapping(path: Path) -> Dict[str, Any]:
+    """Load a YAML fixture and require a mapping root."""
+    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict)
+    return value
 
 
 def test_windows_release_assets_are_complete() -> None:
@@ -182,3 +190,34 @@ def test_release_workflow_builds_expected_targets_and_notes() -> None:
         "--verify-tag",
     ):
         assert required in workflow
+
+
+def test_compose_files_have_shared_runtime_contract() -> None:
+    """Production and development Compose files should run independently."""
+    for filename in ("compose.yaml", "compose.dev.yaml"):
+        compose = load_yaml_mapping(ROOT / filename)
+        assert set(compose["services"]) == {"edge-tts"}
+        service = compose["services"]["edge-tts"]
+        assert service["container_name"] == "edge-tts"
+        assert service["restart"] == "unless-stopped"
+        assert service["ports"] == ["5050:5050"]
+        assert service["volumes"] == ["./config.yaml:/config/config.yaml:ro"]
+        assert service["dns"] == ["223.5.5.5", "119.29.29.29"]
+
+
+def test_production_compose_uses_overridable_ghcr_image() -> None:
+    """Server deployments should pull a published, optionally pinned image."""
+    service = load_yaml_mapping(ROOT / "compose.yaml")["services"]["edge-tts"]
+
+    assert service["image"] == (
+        "ghcr.io/jwwsjlm/edge-tts:${EDGE_TTS_IMAGE_TAG:-latest}"
+    )
+    assert "build" not in service
+
+
+def test_development_compose_builds_local_dockerfile() -> None:
+    """Local development should build the current checkout."""
+    service = load_yaml_mapping(ROOT / "compose.dev.yaml")["services"]["edge-tts"]
+
+    assert service["build"] == {"context": ".", "dockerfile": "Dockerfile"}
+    assert service["image"] == "edge-tts-http:local"
