@@ -3,9 +3,11 @@
 import runpy
 import subprocess
 import sys
+import types
 from pathlib import Path
 from typing import Any, Dict
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,56 @@ def load_yaml_mapping(path: Path) -> Dict[str, Any]:
     value = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return value
+
+
+def test_python_bundle_runner_is_path_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shipped runner should load vendored libraries and a sibling config."""
+    runner_path = ROOT / "packaging/python/run.py"
+
+    assert runner_path.is_file()
+    namespace = runpy.run_path(str(runner_path))
+    bundle_root = runner_path.resolve().parent
+    assert namespace["BUNDLE_ROOT"] == bundle_root
+    assert namespace["LIBS"] == bundle_root / "libs"
+    assert sys.path[0] == str(bundle_root / "libs")
+
+    captured: list[list[str]] = []
+    cli_module = types.ModuleType("edge_tts_server.cli")
+    cli_module.main = lambda argv: captured.append(list(argv))  # type: ignore[attr-defined]
+    package = types.ModuleType("edge_tts_server")
+    monkeypatch.setitem(sys.modules, "edge_tts_server", package)
+    monkeypatch.setitem(sys.modules, "edge_tts_server.cli", cli_module)
+    monkeypatch.setattr(sys, "argv", [str(runner_path)])
+
+    namespace["main"]()
+
+    assert captured == [["--config", str(bundle_root / "config.yaml")]]
+
+
+def test_python_bundle_runner_forwards_explicit_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit CLI arguments should override the bundle-relative default."""
+    runner_path = ROOT / "packaging/python/run.py"
+    namespace = runpy.run_path(str(runner_path))
+    captured: list[list[str]] = []
+    cli_module = types.ModuleType("edge_tts_server.cli")
+    cli_module.main = lambda argv: captured.append(list(argv))  # type: ignore[attr-defined]
+    monkeypatch.setitem(
+        sys.modules, "edge_tts_server", types.ModuleType("edge_tts_server")
+    )
+    monkeypatch.setitem(sys.modules, "edge_tts_server.cli", cli_module)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(runner_path), "--config", "/srv/edge/config.yaml"],
+    )
+
+    namespace["main"]()
+
+    assert captured == [["--config", "/srv/edge/config.yaml"]]
 
 
 def test_windows_release_assets_are_complete() -> None:
