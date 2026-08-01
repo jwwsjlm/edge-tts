@@ -3,6 +3,7 @@
 import runpy
 import subprocess
 import sys
+import tarfile
 import types
 from pathlib import Path
 from typing import Any, Dict
@@ -76,6 +77,45 @@ def test_python_bundle_runner_forwards_explicit_arguments(
     namespace["main"]()
 
     assert captured == [["--config", "/srv/edge/config.yaml"]]
+
+
+def test_python_bundle_builder_creates_clean_single_root_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The builder should keep only runtime files and remove forbidden content."""
+    namespace = runpy.run_path(str(ROOT / "packaging/python/build_bundle.py"))
+
+    def fake_install(libs: Path) -> None:
+        (libs / "edge_tts").mkdir(parents=True)
+        (libs / "edge_tts_server").mkdir()
+        (libs / "edge_playback").mkdir()
+        (libs / "dependency" / "__pycache__").mkdir(parents=True)
+        (libs / "dependency" / "README.md").write_text("remove", encoding="utf-8")
+        (libs / "dependency" / "module.pyc").write_bytes(b"remove")
+        (libs / "dependency" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    monkeypatch.setitem(
+        namespace["build_bundle"].__globals__, "_install_runtime", fake_install
+    )
+    archive = namespace["build_bundle"](tmp_path)
+    bundle = tmp_path / "edge-tts-server-python314-linux-amd64"
+
+    assert archive == tmp_path / "edge-tts-server-python314-linux-amd64.tar.gz"
+    assert archive.is_file()
+    assert {path.name for path in bundle.iterdir()} == {
+        "libs",
+        "config.example.yaml",
+        "run.py",
+        "LICENSE",
+    }
+    assert not (bundle / "libs/edge_playback").exists()
+    assert not list(bundle.rglob("*.md"))
+    assert not list(bundle.rglob("*.pyc"))
+    assert not list(bundle.rglob("__pycache__"))
+    with tarfile.open(archive, "r:gz") as packaged:
+        roots = {member.name.split("/", 1)[0] for member in packaged.getmembers()}
+    assert roots == {"edge-tts-server-python314-linux-amd64"}
 
 
 def test_windows_release_assets_are_complete() -> None:
