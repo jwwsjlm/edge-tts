@@ -8,12 +8,45 @@ $Root = [IO.Path]::GetFullPath($PSScriptRoot)
 $ReleaseRoot = [IO.Path]::GetFullPath((Join-Path $Root "releases/windows"))
 $ExpectedPrefix = $Root.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 
+function Stop-ReleaseProcesses {
+    param([string]$ExecutablePath)
+
+    $ManagedPath = [IO.Path]::GetFullPath($ExecutablePath)
+    $Matching = @(
+        Get-CimInstance Win32_Process -Filter "Name = 'edge-tts-server.exe'" |
+            Where-Object {
+                $null -ne $_.ExecutablePath -and
+                [IO.Path]::GetFullPath($_.ExecutablePath).Equals($ManagedPath, [StringComparison]::OrdinalIgnoreCase)
+            }
+    )
+    foreach ($Running in $Matching) {
+        Stop-Process -Id $Running.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+    for ($Attempt = 0; $Attempt -lt 20; $Attempt++) {
+        $Remaining = @(
+            Get-CimInstance Win32_Process -Filter "Name = 'edge-tts-server.exe'" |
+                Where-Object {
+                    $null -ne $_.ExecutablePath -and
+                    [IO.Path]::GetFullPath($_.ExecutablePath).Equals($ManagedPath, [StringComparison]::OrdinalIgnoreCase)
+                }
+        )
+        if ($Remaining.Count -eq 0) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Unable to stop packaged server process: $ManagedPath"
+}
+
 if (-not $ReleaseRoot.StartsWith($ExpectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to modify a release directory outside the repository: $ReleaseRoot"
 }
 
 Push-Location $Root
 try {
+    $PackagedExe = Join-Path $ReleaseRoot "edge-tts-server-windows-x64/edge-tts-server.exe"
+    Stop-ReleaseProcesses -ExecutablePath $PackagedExe
     if (Test-Path -LiteralPath $ReleaseRoot) {
         Remove-Item -LiteralPath $ReleaseRoot -Recurse -Force
     }
@@ -51,7 +84,7 @@ port: $Port
         $Process = $null
         try {
             $Arguments = @("--config", ('"{0}"' -f $TempConfig))
-            $Process = Start-Process -FilePath (Join-Path $Bundle "edge-tts-server.exe") -ArgumentList $Arguments -PassThru -WindowStyle Hidden
+            $Process = Start-Process -FilePath $PackagedExe -ArgumentList $Arguments -PassThru -WindowStyle Hidden
             $Healthy = $false
             for ($Attempt = 0; $Attempt -lt 40; $Attempt++) {
                 if ($Process.HasExited) {
@@ -75,6 +108,7 @@ port: $Port
                 Stop-Process -Id $Process.Id -Force
                 $Process.WaitForExit()
             }
+            Stop-ReleaseProcesses -ExecutablePath $PackagedExe
             Remove-Item -LiteralPath $TempConfig -Force -ErrorAction SilentlyContinue
         }
     }

@@ -48,6 +48,15 @@ def test_windows_builder_defines_expected_archive_layout() -> None:
         assert required in script
 
 
+def test_windows_builder_cleans_pyinstaller_child_processes_by_path() -> None:
+    """One-file bootloader children must not keep the release EXE locked."""
+    script = (ROOT / "build_windows_release.ps1").read_text(encoding="utf-8")
+
+    assert "Win32_Process" in script
+    assert "ExecutablePath" in script
+    assert "Stop-ReleaseProcesses" in script
+
+
 def test_pyinstaller_entry_uses_package_absolute_import() -> None:
     """PyInstaller executes the entry file without a package parent."""
     entry = (ROOT / "src/edge_tts_server/__main__.py").read_text(encoding="utf-8")
