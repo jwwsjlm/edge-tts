@@ -2,9 +2,9 @@
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from aiohttp import web
+from fastapi import FastAPI
 
 from edge_tts_server.cli import main, resolve_config_path
 
@@ -35,7 +35,7 @@ def test_frozen_mode_uses_executable_directory(
     assert resolve_config_path(None) == executable.parent / "config.yaml"
 
 
-def test_main_loads_config_and_starts_aiohttp(tmp_path: Path, capsys: Any) -> None:
+def test_main_loads_config_and_starts_uvicorn(tmp_path: Path, capsys: Any) -> None:
     """The launcher should bind exactly to values from config.yaml."""
     path = tmp_path / "config.yaml"
     path.write_text(
@@ -44,13 +44,13 @@ def test_main_loads_config_and_starts_aiohttp(tmp_path: Path, capsys: Any) -> No
     captured: Dict[str, Any] = {}
 
     def runner(
-        app: web.Application,
+        app: FastAPI,
         *,
         host: str,
         port: int,
-        print: Optional[Any],  # pylint: disable=redefined-builtin
+        access_log: bool,
     ) -> None:
-        captured.update(app=app, host=host, port=port, print=print)
+        captured.update(app=app, host=host, port=port, access_log=access_log)
 
     main(["--config", str(path)], runner=runner)
 
@@ -59,5 +59,5 @@ def test_main_loads_config_and_starts_aiohttp(tmp_path: Path, capsys: Any) -> No
     assert "http://127.0.0.1:6123" in output
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 6123
-    assert captured["print"] is None
-    assert isinstance(captured["app"], web.Application)
+    assert captured["access_log"] is False
+    assert isinstance(captured["app"], FastAPI)

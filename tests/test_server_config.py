@@ -28,6 +28,55 @@ def test_valid_config_is_loaded(tmp_path: Path) -> None:
     )
 
 
+def test_legacy_config_receives_hardened_defaults(tmp_path: Path) -> None:
+    """Existing three-field files should remain valid after the upgrade."""
+    path = write_config(
+        tmp_path,
+        'api_key: "secret"\nhost: "127.0.0.1"\nport: 5050\n',
+    )
+
+    config = load_or_create_config(path)
+
+    assert config.max_text_length == 5000
+    assert config.max_request_bytes == 65536
+    assert config.max_concurrent_requests == 4
+    assert config.request_timeout_seconds == 120
+    assert config.max_audio_bytes == 20971520
+    assert config.docs_enabled is False
+
+
+def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
+    """Operators should be able to tune all resource controls."""
+    path = write_config(
+        tmp_path,
+        "\n".join(
+            (
+                'api_key: "secret"',
+                'host: "0.0.0.0"',
+                "port: 5050",
+                "max_text_length: 100",
+                "max_request_bytes: 2048",
+                "max_concurrent_requests: 2",
+                "request_timeout_seconds: 30",
+                "max_audio_bytes: 4096",
+                "docs_enabled: true",
+            )
+        ),
+    )
+
+    assert load_or_create_config(path) == ServerConfig(
+        api_key="secret",
+        host="0.0.0.0",
+        port=5050,
+        max_text_length=100,
+        max_request_bytes=2048,
+        max_concurrent_requests=2,
+        request_timeout_seconds=30,
+        max_audio_bytes=4096,
+        docs_enabled=True,
+    )
+
+
 def test_missing_config_is_created_with_random_key(tmp_path: Path) -> None:
     """First launch should create a usable, secret configuration."""
     path = tmp_path / "nested" / "config.yaml"
@@ -58,6 +107,12 @@ def test_generated_keys_are_not_reused(tmp_path: Path) -> None:
         'api_key: "secret"\nhost: "127.0.0.1"\nport: 65536\n',
         'api_key: "secret"\nhost: "127.0.0.1"\nport: "5050"\n',
         'api_key: "secret"\nhost: "127.0.0.1"\nport: 5050\nextra: true\n',
+        'api_key: "secret"\nmax_text_length: 0\n',
+        'api_key: "secret"\nmax_request_bytes: 0\n',
+        'api_key: "secret"\nmax_concurrent_requests: 0\n',
+        'api_key: "secret"\nrequest_timeout_seconds: 0\n',
+        'api_key: "secret"\nmax_audio_bytes: 0\n',
+        'api_key: "secret"\ndocs_enabled: "yes"\n',
         "- not\n- a\n- mapping\n",
         "api_key: [unterminated\n",
     ],
@@ -76,6 +131,8 @@ def test_invalid_config_is_rejected(tmp_path: Path, content: str) -> None:
         ("api_key", 123),
         ("host", None),
         ("port", True),
+        ("max_text_length", True),
+        ("docs_enabled", 1),
     ],
 )
 def test_invalid_scalar_types_are_rejected(  # type: ignore[misc]

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
-from aiohttp import web
+import uvicorn
 
 from .app import create_app
 from .config import load_or_create_config
@@ -35,7 +35,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
 def main(
     argv: Optional[Sequence[str]] = None,
     *,
-    runner: Runner = web.run_app,
+    runner: Runner = uvicorn.run,
 ) -> None:
     """Load configuration and run the HTTP service."""
     args = _parse_args(argv)
@@ -52,5 +52,5 @@ def main(
         create_app(config),
         host=config.host,
         port=config.port,
-        print=None,
+        access_log=False,
     )

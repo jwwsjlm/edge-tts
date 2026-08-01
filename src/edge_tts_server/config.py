@@ -9,7 +9,19 @@ from typing import Any, Mapping
 
 import yaml
 
-_ALLOWED_KEYS = frozenset(("api_key", "host", "port"))
+_ALLOWED_KEYS = frozenset(
+    (
+        "api_key",
+        "host",
+        "port",
+        "max_text_length",
+        "max_request_bytes",
+        "max_concurrent_requests",
+        "request_timeout_seconds",
+        "max_audio_bytes",
+        "docs_enabled",
+    )
+)
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 
 
@@ -18,12 +30,18 @@ class ConfigError(ValueError):
 
 
 @dataclass(frozen=True)
-class ServerConfig:
+class ServerConfig:  # pylint: disable=too-many-instance-attributes
     """Validated server configuration."""
 
     api_key: str
     host: str = "127.0.0.1"
     port: int = 5050
+    max_text_length: int = 5000
+    max_request_bytes: int = 65536
+    max_concurrent_requests: int = 4
+    request_timeout_seconds: int = 120
+    max_audio_bytes: int = 20971520
+    docs_enabled: bool = False
 
 
 def _valid_host(host: str) -> bool:
@@ -52,6 +70,12 @@ def _validate_config(raw: Any) -> ServerConfig:
     api_key = raw.get("api_key")
     host = raw.get("host", "127.0.0.1")
     port = raw.get("port", 5050)
+    max_text_length = raw.get("max_text_length", 5000)
+    max_request_bytes = raw.get("max_request_bytes", 65536)
+    max_concurrent_requests = raw.get("max_concurrent_requests", 4)
+    request_timeout_seconds = raw.get("request_timeout_seconds", 120)
+    max_audio_bytes = raw.get("max_audio_bytes", 20971520)
+    docs_enabled = raw.get("docs_enabled", False)
 
     if not isinstance(api_key, str) or not api_key.strip():
         raise ConfigError("api_key must be a non-empty string")
@@ -59,8 +83,30 @@ def _validate_config(raw: Any) -> ServerConfig:
         raise ConfigError("host must be a valid IP address or hostname")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         raise ConfigError("port must be an integer between 1 and 65535")
+    limits = {
+        "max_text_length": max_text_length,
+        "max_request_bytes": max_request_bytes,
+        "max_concurrent_requests": max_concurrent_requests,
+        "request_timeout_seconds": request_timeout_seconds,
+        "max_audio_bytes": max_audio_bytes,
+    }
+    for name, value in limits.items():
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ConfigError(f"{name} must be a positive integer")
+    if not isinstance(docs_enabled, bool):
+        raise ConfigError("docs_enabled must be a boolean")
 
-    return ServerConfig(api_key=api_key, host=host, port=port)
+    return ServerConfig(
+        api_key=api_key,
+        host=host,
+        port=port,
+        max_text_length=max_text_length,
+        max_request_bytes=max_request_bytes,
+        max_concurrent_requests=max_concurrent_requests,
+        request_timeout_seconds=request_timeout_seconds,
+        max_audio_bytes=max_audio_bytes,
+        docs_enabled=docs_enabled,
+    )
 
 
 def load_or_create_config(path: Path) -> ServerConfig:
