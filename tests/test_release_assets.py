@@ -36,6 +36,7 @@ def test_python_bundle_runner_is_path_independent(
     runner_path = ROOT / "packaging/python/run.py"
 
     assert runner_path.is_file()
+    monkeypatch.setattr(sys, "path", sys.path.copy())
     namespace = runpy.run_path(str(runner_path))
     bundle_root = runner_path.resolve().parent
     assert namespace["BUNDLE_ROOT"] == bundle_root
@@ -60,6 +61,7 @@ def test_python_bundle_runner_forwards_explicit_arguments(
 ) -> None:
     """Explicit CLI arguments should override the bundle-relative default."""
     runner_path = ROOT / "packaging/python/run.py"
+    monkeypatch.setattr(sys, "path", sys.path.copy())
     namespace = runpy.run_path(str(runner_path))
     captured: list[list[str]] = []
     cli_module = types.ModuleType("edge_tts_server.cli")
