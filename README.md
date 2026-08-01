@@ -1,4 +1,4 @@
-# Edge TTS 7.3.1
+# Edge TTS 7.3.2
 
 本项目提供 Microsoft Edge 在线语音合成的 Python 库、命令行工具，以及带 API Key 鉴权的 HTTP 服务。HTTP 服务基于 FastAPI + Uvicorn，适合本地程序调用，也可通过 Docker 部署到 Linux/1Panel。
 
@@ -43,7 +43,7 @@ Copy-Item .\config.example.yaml .\config.yaml
 ```bash
 cp config.example.yaml config.yaml
 # 编辑 config.yaml，替换 api_key
-echo "EDGE_TTS_IMAGE_TAG=7.3.1" > .env
+echo "EDGE_TTS_IMAGE_TAG=7.3.2" > .env
 docker compose -f compose.yaml up -d
 curl http://127.0.0.1:5050/health
 ```
