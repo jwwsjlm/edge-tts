@@ -1,5 +1,6 @@
 """Static contracts for distributable release assets."""
 
+import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
@@ -252,3 +253,36 @@ def test_release_notes_include_production_compose_deployment() -> None:
         "119.29.29.29",
     ):
         assert required in notes
+
+
+def test_root_config_example_is_server_ready() -> None:
+    """The repository-root example should work for Docker and 1Panel."""
+    path = ROOT / "config.example.yaml"
+
+    assert yaml.safe_load(path.read_text(encoding="utf-8")) == {
+        "api_key": "CHANGE_ME_TO_A_LONG_RANDOM_SECRET",
+        "host": "0.0.0.0",
+        "port": 5050,
+    }
+
+
+def test_root_secret_config_is_ignored_without_hiding_example() -> None:
+    """A real API key should not be committed accidentally."""
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert "/config.yaml" in ignore
+    assert "/config.example.yaml" not in ignore
+
+    ignore_statuses = {
+        path: subprocess.run(
+            ["git", "check-ignore", "--no-index", "--quiet", "--", path],
+            cwd=ROOT,
+            check=False,
+        ).returncode
+        for path in ("config.yaml", "config.example.yaml", "nested/config.yaml")
+    }
+    assert ignore_statuses == {
+        "config.yaml": 0,
+        "config.example.yaml": 1,
+        "nested/config.yaml": 1,
+    }
