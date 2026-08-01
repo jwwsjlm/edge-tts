@@ -31,6 +31,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!edge-tts-server.spec
 
 # Installer logs
 pip-log.txt
@@ -164,3 +165,4 @@ cython_debug/
 *.srt
 /.idea/
 /.worktrees/
+/releases/
