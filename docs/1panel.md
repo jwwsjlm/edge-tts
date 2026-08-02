@@ -27,6 +27,10 @@ max_concurrent_requests: 4
 request_timeout_seconds: 120
 max_audio_bytes: 20971520
 docs_enabled: false
+voices_cache_ttl_seconds: 3600
+proxy: null
+upstream_connect_timeout_seconds: 10
+upstream_receive_timeout_seconds: 60
 ```
 
 可在 1Panel 终端生成 Key：
@@ -43,8 +47,8 @@ openssl rand -base64 32
 
 ```bash
 cd /opt/edge-tts
-echo 'EDGE_TTS_IMAGE_TAG=7.3.4' > .env
-docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4
+echo 'EDGE_TTS_IMAGE_TAG=7.4.0' > .env
+docker pull ghcr.io/jwwsjlm/edge-tts:7.4.0
 docker compose -f compose.yaml up -d
 ```
 
@@ -74,13 +78,13 @@ grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
 
 ```bash
 gzip -dc edge-tts-server-linux-amd64.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.3.4 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.4.0 >/dev/null
 ```
 
 创建 `.env` 并启动：
 
 ```bash
-echo 'EDGE_TTS_IMAGE_TAG=7.3.4' > .env
+echo 'EDGE_TTS_IMAGE_TAG=7.4.0' > .env
 docker compose -f compose.yaml up -d
 ```
 
@@ -161,3 +165,17 @@ curl http://127.0.0.1:5050/health
 ```
 
 只读挂载的 `config.yaml` 独立于容器，升级和回滚不会覆盖 API Key。确认旧版本正常后再清理不用的镜像。
+
+## 音色、字幕与代理验证
+
+```bash
+curl "http://127.0.0.1:5050/v1/voices?locale=zh-CN&gender=Female" \
+  -H "X-API-Key: 替换成config中的密钥"
+curl -X POST http://127.0.0.1:5050/v1/tts/bundle \
+  -H "Content-Type: application/json" -H "X-API-Key: 替换成config中的密钥" \
+  -d '{"text":"1Panel 字幕验证","voice":"zh-CN-XiaoxiaoNeural","boundary":"SentenceBoundary"}' \
+  --output speech-bundle.zip
+unzip -l speech-bundle.zip
+```
+
+ZIP 应只列出 `speech.mp3`、`speech.srt`。服务器访问微软上游需要代理时，在挂载的 `config.yaml` 设置 `proxy`，同时可调整 `upstream_connect_timeout_seconds` 和 `upstream_receive_timeout_seconds`；修改后用 Compose 重建容器。代理 URL 及凭据不得复制到面板公开日志或客户端参数。

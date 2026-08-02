@@ -77,6 +77,12 @@ powershell -ExecutionPolicy Bypass -File .\call-example.ps1 -Text "Windows 构�
 
 确认生成 `speech.mp3` 后关闭服务窗口或按 `Ctrl+C`。构建脚本会自动结束由本次产物启动的 PyInstaller 子进程，避免 EXE 被锁定。
 
+## 音色、字幕与代理
+
+服务运行后可带 `X-API-Key` 调用 `/v1/voices?locale=zh-CN` 查询音色；用返回的 `name` 调用 `/v1/tts/bundle`，下载的 ZIP 固定包含 `speech.mp3` 和 `speech.srt`，`boundary` 可选 `WordBoundary` 或 `SentenceBoundary`。
+
+Windows 独立包同样支持在 `config.yaml` 设置全局 `proxy`、`upstream_connect_timeout_seconds` 和 `upstream_receive_timeout_seconds`。代理只用于服务访问微软上游，不是请求字段；修改配置后重启 EXE，且不要公开含凭据的代理 URL。
+
 ## 发布环境
 
 `.github/workflows/release.yml` 在 `windows-2022` 上使用 Python 3.14 x64 重建并冒烟测试。只有 `vX.Y.Z` Tag 与 `src/edge_tts/version.py` 完全一致，且测试、格式、类型、lint 全部通过时，Windows ZIP 才会进入 GitHub Release；最终 SHA-256 位于同一 Release 的 `SHA256SUMS.txt`。

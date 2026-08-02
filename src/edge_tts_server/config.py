@@ -6,6 +6,7 @@ import secrets
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -20,6 +21,10 @@ _ALLOWED_KEYS = frozenset(
         "request_timeout_seconds",
         "max_audio_bytes",
         "docs_enabled",
+        "voices_cache_ttl_seconds",
+        "proxy",
+        "upstream_connect_timeout_seconds",
+        "upstream_receive_timeout_seconds",
     )
 )
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -42,6 +47,10 @@ class ServerConfig:  # pylint: disable=too-many-instance-attributes
     request_timeout_seconds: int = 120
     max_audio_bytes: int = 20971520
     docs_enabled: bool = False
+    voices_cache_ttl_seconds: int = 3600
+    proxy: str | None = None
+    upstream_connect_timeout_seconds: int = 10
+    upstream_receive_timeout_seconds: int = 60
 
 
 def _valid_host(host: str) -> bool:
@@ -56,6 +65,22 @@ def _valid_host(host: str) -> bool:
             and len(hostname) <= 253
             and all(_HOST_LABEL.fullmatch(label) for label in hostname.split("."))
         )
+
+
+def _valid_proxy(proxy: str) -> bool:
+    """Return whether proxy is a supported absolute HTTP(S) URL."""
+    if not proxy or any(character.isspace() for character in proxy):
+        return False
+    try:
+        parsed = urlsplit(proxy)
+        _ = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme.lower() in {"http", "https"}
+        and bool(parsed.hostname)
+        and not parsed.fragment
+    )
 
 
 def _validate_config(raw: Any) -> ServerConfig:
@@ -76,6 +101,10 @@ def _validate_config(raw: Any) -> ServerConfig:
     request_timeout_seconds = raw.get("request_timeout_seconds", 120)
     max_audio_bytes = raw.get("max_audio_bytes", 20971520)
     docs_enabled = raw.get("docs_enabled", False)
+    voices_cache_ttl_seconds = raw.get("voices_cache_ttl_seconds", 3600)
+    proxy = raw.get("proxy")
+    upstream_connect_timeout_seconds = raw.get("upstream_connect_timeout_seconds", 10)
+    upstream_receive_timeout_seconds = raw.get("upstream_receive_timeout_seconds", 60)
 
     if not isinstance(api_key, str) or not api_key.strip():
         raise ConfigError("api_key must be a non-empty string")
@@ -89,12 +118,17 @@ def _validate_config(raw: Any) -> ServerConfig:
         "max_concurrent_requests": max_concurrent_requests,
         "request_timeout_seconds": request_timeout_seconds,
         "max_audio_bytes": max_audio_bytes,
+        "voices_cache_ttl_seconds": voices_cache_ttl_seconds,
+        "upstream_connect_timeout_seconds": upstream_connect_timeout_seconds,
+        "upstream_receive_timeout_seconds": upstream_receive_timeout_seconds,
     }
     for name, value in limits.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise ConfigError(f"{name} must be a positive integer")
     if not isinstance(docs_enabled, bool):
         raise ConfigError("docs_enabled must be a boolean")
+    if proxy is not None and (not isinstance(proxy, str) or not _valid_proxy(proxy)):
+        raise ConfigError("proxy must be null or an absolute HTTP(S) URL")
 
     return ServerConfig(
         api_key=api_key,
@@ -106,6 +140,10 @@ def _validate_config(raw: Any) -> ServerConfig:
         request_timeout_seconds=request_timeout_seconds,
         max_audio_bytes=max_audio_bytes,
         docs_enabled=docs_enabled,
+        voices_cache_ttl_seconds=voices_cache_ttl_seconds,
+        proxy=proxy,
+        upstream_connect_timeout_seconds=upstream_connect_timeout_seconds,
+        upstream_receive_timeout_seconds=upstream_receive_timeout_seconds,
     )
 
 

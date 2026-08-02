@@ -43,6 +43,10 @@ def test_legacy_config_receives_hardened_defaults(tmp_path: Path) -> None:
     assert config.request_timeout_seconds == 120
     assert config.max_audio_bytes == 20971520
     assert config.docs_enabled is False
+    assert config.voices_cache_ttl_seconds == 3600
+    assert config.proxy is None
+    assert config.upstream_connect_timeout_seconds == 10
+    assert config.upstream_receive_timeout_seconds == 60
 
 
 def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
@@ -60,6 +64,10 @@ def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
                 "request_timeout_seconds: 30",
                 "max_audio_bytes: 4096",
                 "docs_enabled: true",
+                "voices_cache_ttl_seconds: 600",
+                'proxy: "http://proxy-user:proxy-pass@proxy.example:8080"',
+                "upstream_connect_timeout_seconds: 4",
+                "upstream_receive_timeout_seconds: 20",
             )
         ),
     )
@@ -74,6 +82,10 @@ def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
         request_timeout_seconds=30,
         max_audio_bytes=4096,
         docs_enabled=True,
+        voices_cache_ttl_seconds=600,
+        proxy="http://proxy-user:proxy-pass@proxy.example:8080",
+        upstream_connect_timeout_seconds=4,
+        upstream_receive_timeout_seconds=20,
     )
 
 
@@ -113,6 +125,12 @@ def test_generated_keys_are_not_reused(tmp_path: Path) -> None:
         'api_key: "secret"\nrequest_timeout_seconds: 0\n',
         'api_key: "secret"\nmax_audio_bytes: 0\n',
         'api_key: "secret"\ndocs_enabled: "yes"\n',
+        'api_key: "secret"\nvoices_cache_ttl_seconds: 0\n',
+        'api_key: "secret"\nupstream_connect_timeout_seconds: 0\n',
+        'api_key: "secret"\nupstream_receive_timeout_seconds: 0\n',
+        'api_key: "secret"\nproxy: "proxy.example:8080"\n',
+        'api_key: "secret"\nproxy: "ftp://proxy.example"\n',
+        'api_key: "secret"\nproxy: "http:///missing-host"\n',
         "- not\n- a\n- mapping\n",
         "api_key: [unterminated\n",
     ],
@@ -133,6 +151,10 @@ def test_invalid_config_is_rejected(tmp_path: Path, content: str) -> None:
         ("port", True),
         ("max_text_length", True),
         ("docs_enabled", 1),
+        ("voices_cache_ttl_seconds", True),
+        ("proxy", 123),
+        ("upstream_connect_timeout_seconds", 1.5),
+        ("upstream_receive_timeout_seconds", False),
     ],
 )
 def test_invalid_scalar_types_are_rejected(  # type: ignore[misc]

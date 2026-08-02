@@ -19,6 +19,10 @@ HARDENED_LIMITS = {
     "request_timeout_seconds": 120,
     "max_audio_bytes": 20971520,
     "docs_enabled": False,
+    "voices_cache_ttl_seconds": 3600,
+    "proxy": None,
+    "upstream_connect_timeout_seconds": 10,
+    "upstream_receive_timeout_seconds": 60,
 }
 
 
@@ -208,6 +212,19 @@ def test_pyinstaller_collects_fastapi_runtime_modules() -> None:
 
     for package in ("fastapi", "pydantic", "uvicorn"):
         assert f'collect_submodules("{package}")' in spec
+
+    for development_only in (
+        "IPython",
+        "_pytest",
+        "astroid",
+        "black",
+        "mypy",
+        "pkg_resources",
+        "pylint",
+        "pytest",
+        "setuptools",
+    ):
+        assert f'"{development_only}"' in spec
 
 
 def test_windows_instructions_cover_double_click_and_api_key() -> None:
@@ -517,11 +534,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_3_4() -> None:
+def test_release_version_is_7_4_0() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.3.4"
+    assert namespace["__version__"] == "7.4.0"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -554,11 +571,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.3.4",
+        "ghcr.io/jwwsjlm/edge-tts:7.4.0",
         "edge-tts-server-linux-amd64.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.3.4",
+        "EDGE_TTS_IMAGE_TAG=7.4.0",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -586,7 +603,9 @@ def test_api_guide_documents_complete_contract_and_clients() -> None:
     guide = (ROOT / "docs/api.md").read_text(encoding="utf-8")
 
     for required in (
+        "GET /v1/voices",
         "POST /v1/tts",
+        "POST /v1/tts/bundle",
         "X-API-Key",
         "text",
         "voice",
@@ -607,6 +626,14 @@ def test_api_guide_documents_complete_contract_and_clients() -> None:
         "JavaScript",
         "PowerShell",
         "speech.mp3",
+        "speech.srt",
+        "WordBoundary",
+        "SentenceBoundary",
+        "voices_cache_ttl_seconds",
+        "upstream_connect_timeout_seconds",
+        "upstream_receive_timeout_seconds",
+        "proxy",
+        "原版功能",
         "/docs",
         "/openapi.json",
     ):
@@ -630,7 +657,7 @@ def test_windows_build_guide_is_complete() -> None:
         assert required in guide
 
 
-def test_current_release_docs_use_python_3_14_and_version_7_3_4() -> None:
+def test_current_release_docs_use_python_3_14_and_version_7_4_0() -> None:
     """Current quick starts should match the runtime and release being published."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     windows = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
@@ -638,17 +665,17 @@ def test_current_release_docs_use_python_3_14_and_version_7_3_4() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS 7.3.4" in readme
+    assert "# Edge TTS 7.4.0" in readme
     assert "推荐 Python 3.14" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.3.4" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.4.0" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.3.4" in docker
-    assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.1" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.3.4" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.3.4" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.4.0" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.4.0" in docker
+    assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.4.0" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.4.0" in panel
     assert "Python 3.14" in notes
 
 
@@ -662,3 +689,24 @@ def test_deployment_docs_copy_the_root_config_example() -> None:
     assert "cp config.example.yaml config.yaml" in release_notes
     for text in (docker_guide, release_notes):
         assert "packaging/docker/config.example.yaml" not in text
+
+
+def test_distribution_docs_cover_7_4_original_capabilities() -> None:
+    """Every shipped guide should expose voices, subtitles and network config."""
+    paths = (
+        ROOT / "README.md",
+        ROOT / "docs/docker.md",
+        ROOT / "docs/1panel.md",
+        ROOT / "docs/windows.md",
+        ROOT / ".github/release-notes.md",
+        ROOT / "packaging/windows/README.txt",
+    )
+    for path in paths:
+        content = path.read_text(encoding="utf-8")
+        for required in (
+            "/v1/voices",
+            "/v1/tts/bundle",
+            "speech.srt",
+            "proxy",
+        ):
+            assert required in content, f"{path} is missing {required}"
