@@ -1,6 +1,6 @@
 # Docker 部署 Edge TTS HTTP 服务
 
-发布镜像：`ghcr.io/jwwsjlm/edge-tts:7.3.4`，支持 `linux/amd64` 和 `linux/arm64`。服务器建议固定版本，不要长期依赖 `latest`。离线 Release 资产仅提供 `linux/amd64`。
+发布镜像：`ghcr.io/jwwsjlm/edge-tts:7.4.0`，支持 `linux/amd64` 和 `linux/arm64`。服务器建议固定版本，不要长期依赖 `latest`。离线 Release 资产仅提供 `linux/amd64`。
 
 ## 准备 config.yaml
 
@@ -30,6 +30,10 @@ max_concurrent_requests: 4
 request_timeout_seconds: 120
 max_audio_bytes: 20971520
 docs_enabled: false
+voices_cache_ttl_seconds: 3600
+proxy: null
+upstream_connect_timeout_seconds: 10
+upstream_receive_timeout_seconds: 60
 ```
 
 Docker 内 `host` 必须为 `0.0.0.0`。客户端通过 `X-API-Key` 提交密钥；不要提交真实 `config.yaml`。修改配置后需重启容器。
@@ -44,7 +48,7 @@ Docker 内 `host` 必须为 `0.0.0.0`。客户端通过 `X-API-Key` 提交密钥
 固定版本：
 
 ```bash
-printf 'EDGE_TTS_IMAGE_TAG=7.3.4\n' > .env
+printf 'EDGE_TTS_IMAGE_TAG=7.4.0\n' > .env
 docker compose -f compose.yaml pull
 docker compose -f compose.yaml up -d
 ```
@@ -84,7 +88,7 @@ docker compose -f compose.dev.yaml up -d --build
 ## 在线 docker run
 
 ```bash
-docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4
+docker pull ghcr.io/jwwsjlm/edge-tts:7.4.0
 docker run -d \
   --name edge-tts \
   --restart unless-stopped \
@@ -93,7 +97,7 @@ docker run -d \
   --dns 223.5.5.5 --dns 119.29.29.29 \
   -p 5050:5050 \
   --mount type=bind,source="$(pwd)/config.yaml",target=/config/config.yaml,readonly \
-  ghcr.io/jwwsjlm/edge-tts:7.3.4
+  ghcr.io/jwwsjlm/edge-tts:7.4.0
 ```
 
 如果 GHCR Package 不是 Public，需要有 `read:packages` 权限的 Token：
@@ -125,7 +129,7 @@ grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
 
 ```bash
 gzip -dc edge-tts-server-linux-amd64.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.3.4 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.4.0 >/dev/null
 ```
 
 然后准备 `config.yaml`、`compose.yaml` 和 `.env`，执行：
@@ -148,6 +152,20 @@ curl -X POST http://127.0.0.1:5050/v1/tts \
 
 完整字段、限制和错误码见 [API 调用指南](api.md)。
 
+查询音色及下载音频字幕 Bundle：
+
+```bash
+curl "http://127.0.0.1:5050/v1/voices?locale=zh-CN" \
+  -H "X-API-Key: 替换成config中的密钥"
+curl -X POST http://127.0.0.1:5050/v1/tts/bundle \
+  -H "Content-Type: application/json" -H "X-API-Key: 替换成config中的密钥" \
+  -d '{"text":"Docker 字幕测试","voice":"zh-CN-XiaoxiaoNeural","boundary":"SentenceBoundary"}' \
+  --output speech-bundle.zip
+unzip speech-bundle.zip speech.mp3 speech.srt
+```
+
+`proxy` 是音色查询和合成共用的服务端全局代理；按需在 `config.yaml` 填写绝对 HTTP/HTTPS URL，并结合 `upstream_connect_timeout_seconds`、`upstream_receive_timeout_seconds` 调整上游超时。不要把代理凭据放进 Compose 或调用正文。
+
 ## HTTPS 与端口保护
 
 API Key 不能代替传输加密。公网部署应在 Nginx、Caddy、Traefik、1Panel 反向代理或云负载均衡器启用 HTTPS。防火墙不要向公网开放 `5050`；只允许反向代理或可信内网访问。需要额外按 IP/用户限流时，在反向代理或 API 网关配置。
@@ -158,7 +176,7 @@ API Key 不能代替传输加密。公网部署应在 Nginx、Caddy、Traefik、
 
 ```bash
 cp .env .env.rollback
-docker pull ghcr.io/jwwsjlm/edge-tts:7.3.1
+docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4
 docker compose -f compose.yaml up -d
 curl http://127.0.0.1:5050/health
 ```

@@ -1,6 +1,6 @@
 # Edge TTS HTTP Server __VERSION__
 
-本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，保留 `POST /v1/tts`、`GET /health`、`X-API-Key` 与稳定错误 JSON。
+本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，保留 `POST /v1/tts`、`GET /health`、`X-API-Key` 与稳定错误 JSON，新增 `GET /v1/voices` 和 `POST /v1/tts/bundle`。这是原版能力的 HTTP 补全，不是 OpenAI API；所有音频与 ZIP 均完整缓冲返回。
 
 ## Release 资产
 
@@ -59,6 +59,10 @@ max_concurrent_requests: 4
 request_timeout_seconds: 120
 max_audio_bytes: 20971520
 docs_enabled: false
+voices_cache_ttl_seconds: 3600
+proxy: null
+upstream_connect_timeout_seconds: 10
+upstream_receive_timeout_seconds: 60
 ```
 
 `api_key` 是客户端 `X-API-Key` 请求头使用的密钥。不要提交真实配置；修改后需重启服务。
@@ -135,6 +139,20 @@ curl -X POST http://127.0.0.1:5050/v1/tts \
 成功响应为 `audio/mpeg`，所有响应含 `X-Request-ID`。并发已满返回 `429 too_many_requests` 和 `Retry-After: 1`；请求、文本、音频超限返回对应 `413`；上游超时返回 `504 upstream_timeout`。
 
 如需 Swagger，将 `docs_enabled` 设为 `true` 并重启，然后访问 `/docs` 或 `/openapi.json`。Swagger 使用公共 CDN，API Key 不持久化。
+
+查询中文音色并下载 MP3 + SRT：
+
+```bash
+curl "http://127.0.0.1:5050/v1/voices?locale=zh-CN" \
+  -H "X-API-Key: 替换成config中的密钥"
+curl -X POST http://127.0.0.1:5050/v1/tts/bundle \
+  -H "Content-Type: application/json" -H "X-API-Key: 替换成config中的密钥" \
+  -d '{"text":"你好，世界","voice":"zh-CN-XiaoxiaoNeural","boundary":"SentenceBoundary"}' \
+  --output speech-bundle.zip
+unzip -l speech-bundle.zip
+```
+
+ZIP 固定只含 `speech.mp3`、`speech.srt`，两者来自同一次上游合成，不使用 HTTP 流式传输。`proxy`、`upstream_connect_timeout_seconds`、`upstream_receive_timeout_seconds` 只能在服务端 `config.yaml` 设置，音色查询和合成共用代理；凭据不会写入安全访问日志。
 
 ## 升级、回滚与安全
 

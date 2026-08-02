@@ -20,7 +20,17 @@ analysis = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "IPython",
+        "_pytest",
+        "astroid",
+        "black",
+        "mypy",
+        "pkg_resources",
+        "pylint",
+        "pytest",
+        "setuptools",
+    ],
     noarchive=False,
 )
 pyz = PYZ(analysis.pure)

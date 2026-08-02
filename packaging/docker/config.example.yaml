@@ -7,3 +7,7 @@ max_concurrent_requests: 4
 request_timeout_seconds: 120
 max_audio_bytes: 20971520
 docs_enabled: false
+voices_cache_ttl_seconds: 3600
+proxy: null
+upstream_connect_timeout_seconds: 10
+upstream_receive_timeout_seconds: 60

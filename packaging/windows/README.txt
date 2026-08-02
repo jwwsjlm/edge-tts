@@ -30,6 +30,17 @@ Edge TTS HTTP Server - Windows 使用说明
     request_timeout_seconds: 120
     max_audio_bytes: 20971520
     docs_enabled: false
+    voices_cache_ttl_seconds: 3600
+    proxy: null
+    upstream_connect_timeout_seconds: 10
+    upstream_receive_timeout_seconds: 60
 
 修改 config.yaml 后需要重启 EXE。除非明确需要局域网访问，否则不要把 host 改成 0.0.0.0。
 服务器与 Docker 部署请查看项目仓库中的 docs/docker.md，并在公网部署时使用 HTTPS 反向代理。
+
+音色与字幕
+----------
+
+带 X-API-Key 调用 /v1/voices?locale=zh-CN 可查询音色；把返回的 name 用于 /v1/tts 或 /v1/tts/bundle。Bundle 的 boundary 可选 WordBoundary 或 SentenceBoundary，下载 ZIP 固定只含 speech.mp3 和 speech.srt。
+
+proxy 是服务访问微软上游的全局 HTTP/HTTPS 代理，只能在 config.yaml 配置，不能由客户端请求传入。不要公开包含账号密码的代理地址。
