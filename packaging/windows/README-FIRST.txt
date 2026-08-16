@@ -6,13 +6,13 @@ Edge TTS HTTP Server - Windows 本地双击版
 先看这四个文件
 --------------
 
-1. 01-双击启动服务.bat
+1. 01-start-server.bat
    双击它会启动 edge-tts-server.exe。服务运行期间不要关闭弹出的窗口。
 
-2. 02-打开接口文档.url
+2. 02-open-swagger.url
    服务启动后双击它，打开 Swagger 接口文档。
 
-3. 03-本地调用示例.ps1
+3. 03-call-example.ps1
    服务启动后运行它，会生成 speech.mp3。
 
 4. config.yaml
@@ -21,9 +21,9 @@ Edge TTS HTTP Server - Windows 本地双击版
 快速开始
 --------
 
-1. 双击 01-双击启动服务.bat。
+1. 双击 01-start-server.bat。
 2. 第一次启动会在当前目录创建 config.yaml，并自动生成随机 API Key。
-3. 双击 02-打开接口文档.url，或访问：http://127.0.0.1:5050/docs
+3. 双击 02-open-swagger.url，或访问：http://127.0.0.1:5050/docs
 4. 健康检查地址：http://127.0.0.1:5050/health
 
 默认只允许本机访问：
@@ -38,7 +38,7 @@ Edge TTS HTTP Server - Windows 本地双击版
 
 在本文件夹打开 PowerShell，执行：
 
-    powershell -ExecutionPolicy Bypass -File .\03-本地调用示例.ps1 -Text "你好，世界"
+    powershell -ExecutionPolicy Bypass -File .\03-call-example.ps1 -Text "你好，世界"
 
 脚本会从 config.yaml 读取 api_key，通过 X-API-Key 请求头调用服务，并生成 speech.mp3。
 

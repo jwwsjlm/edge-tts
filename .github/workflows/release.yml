@@ -85,7 +85,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-release
-          path: releases/windows/edge-tts-server-windows-x64.zip
+          path: releases/windows/edge-tts-windows-x64-standalone.zip
           if-no-files-found: error
 
   python_bundle:
@@ -111,12 +111,12 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
-          rm -rf edge-tts-server-python314-linux-amd64
-          tar -xzf edge-tts-server-python314-linux-amd64.tar.gz
-          cp edge-tts-server-python314-linux-amd64/config.example.yaml \
-            edge-tts-server-python314-linux-amd64/config.yaml
+          rm -rf edge-tts-linux-amd64-python314
+          tar -xzf edge-tts-linux-amd64-python314.tar.gz
+          cp edge-tts-linux-amd64-python314/config.example.yaml \
+            edge-tts-linux-amd64-python314/config.yaml
           docker run --rm --network none --platform linux/amd64 \
-            --volume "$PWD/edge-tts-server-python314-linux-amd64:/bundle" \
+            --volume "$PWD/edge-tts-linux-amd64-python314:/bundle" \
             --workdir /bundle python:3.14-slim sh -euc '
               python3.14 run.py >/tmp/server.log 2>&1 &
               server_pid=$!
@@ -135,7 +135,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-runtime-release
-          path: release-assets/edge-tts-server-python314-linux-amd64.tar.gz
+          path: release-assets/edge-tts-linux-amd64-python314.tar.gz
           if-no-files-found: error
 
   docker:
@@ -201,13 +201,13 @@ jobs:
         run: |
           mkdir -p release-assets
           docker save "$IMAGE:$VERSION" | gzip -9 \
-            > release-assets/edge-tts-server-linux-amd64.tar.gz
+            > release-assets/edge-tts-linux-amd64-docker-offline.tar.gz
 
       - name: Reload offline amd64 image
         shell: bash
         run: |
           docker image rm "$IMAGE:$VERSION"
-          gzip --decompress --stdout release-assets/edge-tts-server-linux-amd64.tar.gz \
+          gzip --decompress --stdout release-assets/edge-tts-linux-amd64-docker-offline.tar.gz \
             | docker load
 
       - name: Smoke-test reloaded offline image
@@ -243,7 +243,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-offline-release
-          path: release-assets/edge-tts-server-linux-amd64.tar.gz
+          path: release-assets/edge-tts-linux-amd64-docker-offline.tar.gz
           if-no-files-found: error
 
       - name: Log in to GHCR
@@ -302,9 +302,9 @@ jobs:
         run: |
           cd release-assets
           sha256sum \
-            edge-tts-server-windows-x64.zip \
-            edge-tts-server-python314-linux-amd64.tar.gz \
-            edge-tts-server-linux-amd64.tar.gz \
+            edge-tts-windows-x64-standalone.zip \
+            edge-tts-linux-amd64-python314.tar.gz \
+            edge-tts-linux-amd64-docker-offline.tar.gz \
             | sort --key=2 > SHA256SUMS.txt
 
       - name: Render release deployment guide
@@ -326,10 +326,10 @@ jobs:
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "release-assets/edge-tts-server-windows-x64.zip#Windows 本地双击版：解压后双击 01-双击启动服务.bat" \
-            "release-assets/edge-tts-server-python314-linux-amd64.tar.gz#Linux 纯净 Python 3.14 包：仅 Linux amd64，需已有 Python" \
-            "release-assets/edge-tts-server-linux-amd64.tar.gz#Linux 离线 Docker/1Panel 镜像：仅 Linux amd64 服务器" \
-            "release-assets/SHA256SUMS.txt#SHA-256 校验文件" \
+            "release-assets/edge-tts-windows-x64-standalone.zip#Windows x64 | Standalone | Double-click 01-start-server.bat" \
+            "release-assets/edge-tts-linux-amd64-python314.tar.gz#Linux amd64 | Python 3.14 bundle" \
+            "release-assets/edge-tts-linux-amd64-docker-offline.tar.gz#Linux amd64 | Docker offline image | 1Panel" \
+            "release-assets/SHA256SUMS.txt#SHA-256 checksums" \
             --verify-tag \
-            --title "Edge TTS HTTP Server ${VERSION}" \
+            --title "Edge TTS Server ${VERSION} | Windows + Linux + Docker" \
             --notes-file release-notes.rendered.md

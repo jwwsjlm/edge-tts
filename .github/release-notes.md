@@ -4,9 +4,9 @@
 
 ## 先按设备选择下载文件
 
-- **Windows 电脑本地运行**：`edge-tts-server-windows-x64.zip`。解压后双击 `01-双击启动服务.bat`；无需 Python、Docker 或额外依赖。
-- **Linux 服务器，已有 Python 3.14**：`edge-tts-server-python314-linux-amd64.tar.gz`。这是纯净运行包，依赖位于 `libs/`；不适用于 Windows。
-- **Linux 服务器 / 1Panel / Docker 离线部署**：`edge-tts-server-linux-amd64.tar.gz`。这是 Docker 离线镜像；不适用于 Windows，不能直接解压运行。
+- **Windows 电脑本地运行**：`edge-tts-windows-x64-standalone.zip`。解压后双击 `01-start-server.bat`；无需 Python、Docker 或额外依赖。
+- **Linux 服务器，已有 Python 3.14**：`edge-tts-linux-amd64-python314.tar.gz`。这是纯净运行包，依赖位于 `libs/`；不适用于 Windows。
+- **Linux 服务器 / 1Panel / Docker 离线部署**：`edge-tts-linux-amd64-docker-offline.tar.gz`。这是 Docker 离线镜像；不适用于 Windows，不能直接解压运行。
 - **核对下载完整性**：`SHA256SUMS.txt`。
 - 在线镜像：`__IMAGE__:__VERSION__` 与 `__IMAGE__:latest`，支持 `linux/amd64`、`linux/arm64`。
 
@@ -19,16 +19,16 @@ sha256sum -c SHA256SUMS.txt
 只校验 Linux tar：
 
 ```bash
-grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
+grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c -
 ```
 
 ## Windows 使用
 
-1. 下载并解压 `edge-tts-server-windows-x64.zip`。
-2. 双击 `01-双击启动服务.bat`。
+1. 下载并解压 `edge-tts-windows-x64-standalone.zip`。
+2. 双击 `01-start-server.bat`。
 3. 首次启动会在 EXE 同目录生成 `config.yaml` 和随机 API Key。
-4. 双击 `02-打开接口文档.url`，或访问 `http://127.0.0.1:5050/docs`。
-5. 在同目录运行 `03-本地调用示例.ps1`，生成 `speech.mp3`。
+4. 双击 `02-open-swagger.url`，或访问 `http://127.0.0.1:5050/docs`。
+5. 在同目录运行 `03-call-example.ps1`，生成 `speech.mp3`。
 
 压缩包内已包含 Python 解释器、运行库、配置示例、PowerShell 示例和中文说明。语音合成时仍需访问微软 TTS 上游。
 
@@ -37,8 +37,8 @@ grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
 该包适用于使用 glibc 的 Linux amd64 主机，服务器必须已安装 Python 3.14。不支持 Alpine/musl，也不包含 Python 解释器。运行时无需安装依赖，压缩包内不包含 Markdown 或 shell 启动脚本。
 
 ```bash
-tar -xzf edge-tts-server-python314-linux-amd64.tar.gz
-cd edge-tts-server-python314-linux-amd64
+tar -xzf edge-tts-linux-amd64-python314.tar.gz
+cd edge-tts-linux-amd64-python314
 cp config.example.yaml config.yaml
 # 编辑 config.yaml，替换 api_key
 python3.14 run.py
@@ -107,11 +107,11 @@ docker run -d \
 
 ## 离线 Docker / 1Panel
 
-将 `edge-tts-server-linux-amd64.tar.gz`、`SHA256SUMS.txt`、`compose.yaml` 和 `config.yaml` 上传到服务器。校验后导入：
+将 `edge-tts-linux-amd64-docker-offline.tar.gz`、`SHA256SUMS.txt`、`compose.yaml` 和 `config.yaml` 上传到服务器。校验后导入：
 
 ```bash
-grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
-gzip -dc edge-tts-server-linux-amd64.tar.gz | docker load
+grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c -
+gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
 docker image inspect __IMAGE__:__VERSION__ >/dev/null
 echo 'EDGE_TTS_IMAGE_TAG=__VERSION__' > .env
 docker compose -f compose.yaml up -d

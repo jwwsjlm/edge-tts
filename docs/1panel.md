@@ -47,8 +47,8 @@ openssl rand -base64 32
 
 ```bash
 cd /opt/edge-tts
-echo 'EDGE_TTS_IMAGE_TAG=7.4.1' > .env
-docker pull ghcr.io/jwwsjlm/edge-tts:7.4.1
+echo 'EDGE_TTS_IMAGE_TAG=7.4.2' > .env
+docker pull ghcr.io/jwwsjlm/edge-tts:7.4.2
 docker compose -f compose.yaml up -d
 ```
 
@@ -58,7 +58,7 @@ docker compose -f compose.yaml up -d
 
 从 GitHub Release 下载并通过 1Panel“文件”上传到 `/opt/edge-tts`：
 
-- `edge-tts-server-linux-amd64.tar.gz`
+- `edge-tts-linux-amd64-docker-offline.tar.gz`
 - `SHA256SUMS.txt`
 
 如果同时上传了 Release 的所有资产，可完整校验：
@@ -71,20 +71,20 @@ sha256sum -c SHA256SUMS.txt
 只上传 Linux tar 时：
 
 ```bash
-grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
+grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c -
 ```
 
 导入并检查镜像：
 
 ```bash
-gzip -dc edge-tts-server-linux-amd64.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.4.1 >/dev/null
+gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.4.2 >/dev/null
 ```
 
 创建 `.env` 并启动：
 
 ```bash
-echo 'EDGE_TTS_IMAGE_TAG=7.4.1' > .env
+echo 'EDGE_TTS_IMAGE_TAG=7.4.2' > .env
 docker compose -f compose.yaml up -d
 ```
 

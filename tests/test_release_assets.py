@@ -107,9 +107,9 @@ def test_python_bundle_builder_creates_clean_single_root_archive(
         namespace["build_bundle"].__globals__, "_install_runtime", fake_install
     )
     archive = namespace["build_bundle"](tmp_path)
-    bundle = tmp_path / "edge-tts-server-python314-linux-amd64"
+    bundle = tmp_path / "edge-tts-linux-amd64-python314"
 
-    assert archive == tmp_path / "edge-tts-server-python314-linux-amd64.tar.gz"
+    assert archive == tmp_path / "edge-tts-linux-amd64-python314.tar.gz"
     assert archive.is_file()
     assert {path.name for path in bundle.iterdir()} == {
         "libs",
@@ -124,7 +124,7 @@ def test_python_bundle_builder_creates_clean_single_root_archive(
     assert not list(bundle.rglob("__pycache__"))
     with tarfile.open(archive, "r:gz") as packaged:
         roots = {member.name.split("/", 1)[0] for member in packaged.getmembers()}
-    assert roots == {"edge-tts-server-python314-linux-amd64"}
+    assert roots == {"edge-tts-linux-amd64-python314"}
 
 
 def test_windows_release_assets_are_complete() -> None:
@@ -133,10 +133,10 @@ def test_windows_release_assets_are_complete() -> None:
         ROOT / "edge-tts-server.spec",
         ROOT / "build_windows_release.ps1",
         ROOT / "packaging/windows/config.example.yaml",
-        ROOT / "packaging/windows/01-双击启动服务.bat",
-        ROOT / "packaging/windows/02-打开接口文档.url",
-        ROOT / "packaging/windows/03-本地调用示例.ps1",
-        ROOT / "packaging/windows/使用说明.txt",
+        ROOT / "packaging/windows/01-start-server.bat",
+        ROOT / "packaging/windows/02-open-swagger.url",
+        ROOT / "packaging/windows/03-call-example.ps1",
+        ROOT / "packaging/windows/README-FIRST.txt",
     ]
 
     assert all(path.is_file() for path in expected)
@@ -181,13 +181,13 @@ def test_windows_builder_defines_expected_archive_layout() -> None:
     script = (ROOT / "build_windows_release.ps1").read_text(encoding="utf-8")
 
     for required in (
-        "edge-tts-server-windows-x64",
+        "edge-tts-windows-x64-standalone",
         "edge-tts-server.exe",
         "config.example.yaml",
-        "01-双击启动服务.bat",
-        "02-打开接口文档.url",
-        "03-本地调用示例.ps1",
-        "使用说明.txt",
+        "01-start-server.bat",
+        "02-open-swagger.url",
+        "03-call-example.ps1",
+        "README-FIRST.txt",
         "Compress-Archive",
         "/health",
     ):
@@ -233,8 +233,8 @@ def test_pyinstaller_collects_fastapi_runtime_modules() -> None:
 
 def test_windows_instructions_cover_double_click_and_api_key() -> None:
     """Archive-local help should be enough for first-time use."""
-    readme = (ROOT / "packaging/windows/使用说明.txt").read_text(encoding="utf-8")
-    example = (ROOT / "packaging/windows/03-本地调用示例.ps1").read_text(
+    readme = (ROOT / "packaging/windows/README-FIRST.txt").read_text(encoding="utf-8")
+    example = (ROOT / "packaging/windows/03-call-example.ps1").read_text(
         encoding="utf-8"
     )
 
@@ -245,8 +245,8 @@ def test_windows_instructions_cover_double_click_and_api_key() -> None:
     assert "speech.mp3" in example
     assert "无需安装 Python" in readme
     assert "无需联网" in readme
-    assert "01-双击启动服务.bat" in readme
-    assert "02-打开接口文档.url" in readme
+    assert "01-start-server.bat" in readme
+    assert "02-open-swagger.url" in readme
 
 
 def test_release_asset_labels_make_platform_and_start_action_explicit() -> None:
@@ -254,10 +254,10 @@ def test_release_asset_labels_make_platform_and_start_action_explicit() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     for label in (
-        "Windows 本地双击版",
-        "01-双击启动服务.bat",
-        "Linux 纯净 Python 3.14 包",
-        "Linux 离线 Docker/1Panel 镜像",
+        "Windows x64 | Standalone | Double-click 01-start-server.bat",
+        "01-start-server.bat",
+        "Linux amd64 | Python 3.14 bundle",
+        "Linux amd64 | Docker offline image | 1Panel",
     ):
         assert label in workflow
 
@@ -314,7 +314,7 @@ def test_docker_guide_covers_configuration_and_operations() -> None:
         "/health",
         "linux/amd64",
         "linux/arm64",
-        "edge-tts-server-linux-amd64.tar.gz",
+        "edge-tts-linux-amd64-docker-offline.tar.gz",
         "docker load",
         "read_only",
         "chown 10001:10001 config.yaml",
@@ -335,8 +335,8 @@ def test_release_notes_are_a_self_contained_docker_guide() -> None:
         "0.0.0.0",
         "X-API-Key",
         "docker run",
-        "edge-tts-server-windows-x64.zip",
-        "edge-tts-server-linux-amd64.tar.gz",
+        "edge-tts-windows-x64-standalone.zip",
+        "edge-tts-linux-amd64-docker-offline.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
         "1Panel",
@@ -414,17 +414,17 @@ def test_release_workflow_builds_expected_targets_and_notes() -> None:
         "runpy.run_path",
         "src/edge_tts/version.py",
         "build_windows_release.ps1",
-        "edge-tts-server-windows-x64.zip",
+        "edge-tts-windows-x64-standalone.zip",
         "Build clean Python 3.14 runtime bundle",
         "Smoke-test clean Python bundle without network",
         "python:3.14-slim",
         "--platform linux/amd64",
         "--network none",
         "python3.14 run.py",
-        "edge-tts-server-python314-linux-amd64.tar.gz",
+        "edge-tts-linux-amd64-python314.tar.gz",
         "linux/amd64,linux/arm64",
         "ghcr.io/${{ github.repository }}",
-        "edge-tts-server-linux-amd64.tar.gz",
+        "edge-tts-linux-amd64-docker-offline.tar.gz",
         "SHA256SUMS.txt",
         "docker load",
         "Smoke-test native amd64 image",
@@ -441,7 +441,7 @@ def test_release_notes_document_clean_python_bundle() -> None:
     """The generated Release must explain the pip-free Python asset."""
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
     for required in (
-        "edge-tts-server-python314-linux-amd64.tar.gz",
+        "edge-tts-linux-amd64-python314.tar.gz",
         "Python 3.14",
         "Linux amd64",
         "glibc",
@@ -456,8 +456,8 @@ def test_release_notes_document_clean_python_bundle() -> None:
 def test_python_bundle_smoke_removes_staging_before_extracting() -> None:
     """The smoke test must not extract over the root-owned build staging tree."""
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    cleanup = "rm -rf edge-tts-server-python314-linux-amd64"
-    extract = "tar -xzf edge-tts-server-python314-linux-amd64.tar.gz"
+    cleanup = "rm -rf edge-tts-linux-amd64-python314"
+    extract = "tar -xzf edge-tts-linux-amd64-python314.tar.gz"
 
     assert cleanup in workflow
     assert workflow.index(cleanup) < workflow.index(extract)
@@ -555,11 +555,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_4_1() -> None:
+def test_release_version_is_7_4_2() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.4.1"
+    assert namespace["__version__"] == "7.4.2"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -592,11 +592,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.4.1",
-        "edge-tts-server-linux-amd64.tar.gz",
+        "ghcr.io/jwwsjlm/edge-tts:7.4.2",
+        "edge-tts-linux-amd64-docker-offline.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.4.1",
+        "EDGE_TTS_IMAGE_TAG=7.4.2",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -671,7 +671,7 @@ def test_windows_build_guide_is_complete() -> None:
         'pip install -e ".[dev]"',
         "PyInstaller",
         "build_windows_release.ps1",
-        "releases/windows/edge-tts-server-windows-x64.zip",
+        "releases/windows/edge-tts-windows-x64-standalone.zip",
         "无需安装 Python",
         "/health",
     ):
@@ -686,17 +686,17 @@ def test_current_release_docs_use_python_3_14_and_version_7_4_0() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS 7.4.1" in readme
+    assert "# Edge TTS 7.4.2" in readme
     assert "推荐 Python 3.14" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.4.1" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.4.2" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.4.1" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.4.1" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.4.2" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.4.2" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.4.1" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.4.1" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.4.2" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.4.2" in panel
     assert "Python 3.14" in notes
 
 
@@ -720,7 +720,7 @@ def test_distribution_docs_cover_7_4_original_capabilities() -> None:
         ROOT / "docs/1panel.md",
         ROOT / "docs/windows.md",
         ROOT / ".github/release-notes.md",
-        ROOT / "packaging/windows/使用说明.txt",
+        ROOT / "packaging/windows/README-FIRST.txt",
     )
     for path in paths:
         content = path.read_text(encoding="utf-8")

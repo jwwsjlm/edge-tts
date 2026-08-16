@@ -45,7 +45,7 @@ if (-not $ReleaseRoot.StartsWith($ExpectedPrefix, [StringComparison]::OrdinalIgn
 
 Push-Location $Root
 try {
-    $PackagedExe = Join-Path $ReleaseRoot "edge-tts-server-windows-x64/edge-tts-server.exe"
+    $PackagedExe = Join-Path $ReleaseRoot "edge-tts-windows-x64-standalone/edge-tts-server.exe"
     Stop-ReleaseProcesses -ExecutablePath $PackagedExe
     if (Test-Path -LiteralPath $ReleaseRoot) {
         Remove-Item -LiteralPath $ReleaseRoot -Recurse -Force
@@ -61,14 +61,14 @@ try {
         throw "PyInstaller output is missing: $ExeSource"
     }
 
-    $Bundle = Join-Path $ReleaseRoot "edge-tts-server-windows-x64"
+    $Bundle = Join-Path $ReleaseRoot "edge-tts-windows-x64-standalone"
     New-Item -ItemType Directory -Path $Bundle -Force | Out-Null
     Copy-Item -LiteralPath $ExeSource -Destination (Join-Path $Bundle "edge-tts-server.exe")
     Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/config.example.yaml") -Destination $Bundle
-    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/使用说明.txt") -Destination $Bundle
-    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/01-双击启动服务.bat") -Destination $Bundle
-    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/02-打开接口文档.url") -Destination $Bundle
-    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/03-本地调用示例.ps1") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/README-FIRST.txt") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/01-start-server.bat") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/02-open-swagger.url") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/03-call-example.ps1") -Destination $Bundle
 
     if (-not $SkipSmokeTest) {
         $Listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -115,7 +115,7 @@ port: $Port
         }
     }
 
-    $Archive = Join-Path $ReleaseRoot "edge-tts-server-windows-x64.zip"
+    $Archive = Join-Path $ReleaseRoot "edge-tts-windows-x64-standalone.zip"
     Compress-Archive -Path $Bundle -DestinationPath $Archive -CompressionLevel Optimal
     Write-Host "Windows release created: $Archive"
 } finally {

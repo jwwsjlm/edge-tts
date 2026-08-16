@@ -8,7 +8,7 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLE_NAME = "edge-tts-server-python314-linux-amd64"
+BUNDLE_NAME = "edge-tts-linux-amd64-python314"
 ALLOWED_TOP_LEVEL = {"libs", "config.example.yaml", "run.py", "LICENSE"}
 
 
