@@ -2,12 +2,12 @@
 
 本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，保留 `POST /v1/tts`、`GET /health`、`X-API-Key` 与稳定错误 JSON，新增 `GET /v1/voices` 和 `POST /v1/tts/bundle`。这是原版能力的 HTTP 补全，不是 OpenAI API；所有音频与 ZIP 均完整缓冲返回。
 
-## Release 资产
+## 先按设备选择下载文件
 
-- `edge-tts-server-windows-x64.zip`：使用 Python 3.14 x64 构建，可双击运行，目标电脑无需安装 Python 或联网安装依赖。
-- `edge-tts-server-python314-linux-amd64.tar.gz`：项目源码和依赖均位于 `libs/`，无需执行 `pip install`。
-- `edge-tts-server-linux-amd64.tar.gz`：可上传到离线 Docker/1Panel 服务器。
-- `SHA256SUMS.txt`：上述三个资产的 SHA-256。
+- **Windows 电脑本地运行**：`edge-tts-server-windows-x64.zip`。解压后双击 `01-双击启动服务.bat`；无需 Python、Docker 或额外依赖。
+- **Linux 服务器，已有 Python 3.14**：`edge-tts-server-python314-linux-amd64.tar.gz`。这是纯净运行包，依赖位于 `libs/`；不适用于 Windows。
+- **Linux 服务器 / 1Panel / Docker 离线部署**：`edge-tts-server-linux-amd64.tar.gz`。这是 Docker 离线镜像；不适用于 Windows，不能直接解压运行。
+- **核对下载完整性**：`SHA256SUMS.txt`。
 - 在线镜像：`__IMAGE__:__VERSION__` 与 `__IMAGE__:latest`，支持 `linux/amd64`、`linux/arm64`。
 
 下载全部资产后校验：
@@ -24,10 +24,11 @@ grep 'edge-tts-server-linux-amd64.tar.gz' SHA256SUMS.txt | sha256sum -c -
 
 ## Windows 使用
 
-1. 解压 `edge-tts-server-windows-x64.zip`。
-2. 双击 `edge-tts-server.exe`。
+1. 下载并解压 `edge-tts-server-windows-x64.zip`。
+2. 双击 `01-双击启动服务.bat`。
 3. 首次启动会在 EXE 同目录生成 `config.yaml` 和随机 API Key。
-4. 在同目录运行 `call-example.ps1`，生成 `speech.mp3`。
+4. 双击 `02-打开接口文档.url`，或访问 `http://127.0.0.1:5050/docs`。
+5. 在同目录运行 `03-本地调用示例.ps1`，生成 `speech.mp3`。
 
 压缩包内已包含 Python 解释器、运行库、配置示例、PowerShell 示例和中文说明。语音合成时仍需访问微软 TTS 上游。
 

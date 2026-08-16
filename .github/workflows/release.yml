@@ -326,10 +326,10 @@ jobs:
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "release-assets/edge-tts-server-windows-x64.zip#Windows x64 standalone server" \
-            "release-assets/edge-tts-server-python314-linux-amd64.tar.gz#Linux amd64 Python 3.14 clean runtime bundle" \
-            "release-assets/edge-tts-server-linux-amd64.tar.gz#Linux amd64 offline Docker image" \
-            "release-assets/SHA256SUMS.txt#SHA-256 checksums" \
+            "release-assets/edge-tts-server-windows-x64.zip#Windows 本地双击版：解压后双击 01-双击启动服务.bat" \
+            "release-assets/edge-tts-server-python314-linux-amd64.tar.gz#Linux 纯净 Python 3.14 包：仅 Linux amd64，需已有 Python" \
+            "release-assets/edge-tts-server-linux-amd64.tar.gz#Linux 离线 Docker/1Panel 镜像：仅 Linux amd64 服务器" \
+            "release-assets/SHA256SUMS.txt#SHA-256 校验文件" \
             --verify-tag \
             --title "Edge TTS HTTP Server ${VERSION}" \
             --notes-file release-notes.rendered.md

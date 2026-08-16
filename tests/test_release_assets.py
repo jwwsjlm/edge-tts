@@ -133,8 +133,10 @@ def test_windows_release_assets_are_complete() -> None:
         ROOT / "edge-tts-server.spec",
         ROOT / "build_windows_release.ps1",
         ROOT / "packaging/windows/config.example.yaml",
-        ROOT / "packaging/windows/README.txt",
-        ROOT / "packaging/windows/call-example.ps1",
+        ROOT / "packaging/windows/01-双击启动服务.bat",
+        ROOT / "packaging/windows/02-打开接口文档.url",
+        ROOT / "packaging/windows/03-本地调用示例.ps1",
+        ROOT / "packaging/windows/使用说明.txt",
     ]
 
     assert all(path.is_file() for path in expected)
@@ -182,8 +184,10 @@ def test_windows_builder_defines_expected_archive_layout() -> None:
         "edge-tts-server-windows-x64",
         "edge-tts-server.exe",
         "config.example.yaml",
-        "README.txt",
-        "call-example.ps1",
+        "01-双击启动服务.bat",
+        "02-打开接口文档.url",
+        "03-本地调用示例.ps1",
+        "使用说明.txt",
         "Compress-Archive",
         "/health",
     ):
@@ -229,8 +233,10 @@ def test_pyinstaller_collects_fastapi_runtime_modules() -> None:
 
 def test_windows_instructions_cover_double_click_and_api_key() -> None:
     """Archive-local help should be enough for first-time use."""
-    readme = (ROOT / "packaging/windows/README.txt").read_text(encoding="utf-8")
-    example = (ROOT / "packaging/windows/call-example.ps1").read_text(encoding="utf-8")
+    readme = (ROOT / "packaging/windows/使用说明.txt").read_text(encoding="utf-8")
+    example = (ROOT / "packaging/windows/03-本地调用示例.ps1").read_text(
+        encoding="utf-8"
+    )
 
     assert "edge-tts-server.exe" in readme
     assert "config.yaml" in readme
@@ -239,6 +245,21 @@ def test_windows_instructions_cover_double_click_and_api_key() -> None:
     assert "speech.mp3" in example
     assert "无需安装 Python" in readme
     assert "无需联网" in readme
+    assert "01-双击启动服务.bat" in readme
+    assert "02-打开接口文档.url" in readme
+
+
+def test_release_asset_labels_make_platform_and_start_action_explicit() -> None:
+    """GitHub Release labels must prevent users from downloading the wrong asset."""
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    for label in (
+        "Windows 本地双击版",
+        "01-双击启动服务.bat",
+        "Linux 纯净 Python 3.14 包",
+        "Linux 离线 Docker/1Panel 镜像",
+    ):
+        assert label in workflow
 
 
 def test_docker_assets_define_non_root_healthy_service() -> None:
@@ -534,11 +555,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_4_0() -> None:
+def test_release_version_is_7_4_1() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.4.0"
+    assert namespace["__version__"] == "7.4.1"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -571,11 +592,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.4.0",
+        "ghcr.io/jwwsjlm/edge-tts:7.4.1",
         "edge-tts-server-linux-amd64.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.4.0",
+        "EDGE_TTS_IMAGE_TAG=7.4.1",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -665,17 +686,17 @@ def test_current_release_docs_use_python_3_14_and_version_7_4_0() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS 7.4.0" in readme
+    assert "# Edge TTS 7.4.1" in readme
     assert "推荐 Python 3.14" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.4.0" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.4.1" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.4.0" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.4.0" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.4.1" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.4.1" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.4.0" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.4.0" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.4.1" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.4.1" in panel
     assert "Python 3.14" in notes
 
 
@@ -699,7 +720,7 @@ def test_distribution_docs_cover_7_4_original_capabilities() -> None:
         ROOT / "docs/1panel.md",
         ROOT / "docs/windows.md",
         ROOT / ".github/release-notes.md",
-        ROOT / "packaging/windows/README.txt",
+        ROOT / "packaging/windows/使用说明.txt",
     )
     for path in paths:
         content = path.read_text(encoding="utf-8")

@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ConfigPath = Join-Path $PSScriptRoot "config.yaml"
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
-    throw "config.yaml 不存在。请先双击 edge-tts-server.exe。"
+    throw "config.yaml 不存在。请先双击 01-双击启动服务.bat。"
 }
 
 $KeyLine = Get-Content -LiteralPath $ConfigPath | Where-Object { $_ -match '^\s*api_key\s*:' } | Select-Object -First 1

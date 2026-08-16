@@ -56,8 +56,10 @@ ZIP 包含：
 
 - `edge-tts-server.exe`（Python 解释器和运行库已封装）
 - `config.example.yaml`
-- `call-example.ps1`
-- `README.txt`
+- `01-双击启动服务.bat`
+- `02-打开接口文档.url`
+- `03-本地调用示例.ps1`
+- `使用说明.txt`
 
 不要把本机生成的 `config.yaml` 或真实 API Key 放进 ZIP。
 
@@ -72,7 +74,7 @@ Invoke-RestMethod http://127.0.0.1:5050/health
 应返回 `status = ok`。随后执行压缩包中的调用示例：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\call-example.ps1 -Text "Windows 构建测试"
+powershell -ExecutionPolicy Bypass -File .\03-本地调用示例.ps1 -Text "Windows 构建测试"
 ```
 
 确认生成 `speech.mp3` 后关闭服务窗口或按 `Ctrl+C`。构建脚本会自动结束由本次产物启动的 PyInstaller 子进程，避免 EXE 被锁定。

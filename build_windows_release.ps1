@@ -65,8 +65,10 @@ try {
     New-Item -ItemType Directory -Path $Bundle -Force | Out-Null
     Copy-Item -LiteralPath $ExeSource -Destination (Join-Path $Bundle "edge-tts-server.exe")
     Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/config.example.yaml") -Destination $Bundle
-    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/README.txt") -Destination $Bundle
-    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/call-example.ps1") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/使用说明.txt") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/01-双击启动服务.bat") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/02-打开接口文档.url") -Destination $Bundle
+    Copy-Item -LiteralPath (Join-Path $Root "packaging/windows/03-本地调用示例.ps1") -Destination $Bundle
 
     if (-not $SkipSmokeTest) {
         $Listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
