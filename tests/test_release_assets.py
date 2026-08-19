@@ -405,10 +405,49 @@ def test_automation_pins_python_3_14() -> None:
     assert "Set up Python 3.14" in release
     assert "Set up Python 3.14 x64" in release
     assert "3.12" not in release
-    assert "actions/checkout@v4" in quality
-    assert "actions/setup-python@v5" in quality
+    assert "actions/checkout@v7" in quality
+    assert "actions/setup-python@v7" in quality
     assert quality.count('python-version: "3.14"') == 1
     assert "python-version: 3.x" not in quality
+
+
+def test_workflows_use_current_node24_action_majors() -> None:
+    """Maintained workflows should avoid deprecated Node.js action runtimes."""
+    workflows = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml"))
+    )
+
+    for action in (
+        "actions/checkout@v7",
+        "actions/setup-python@v7",
+        "actions/upload-artifact@v7",
+        "actions/download-artifact@v8",
+        "github/codeql-action/init@v4",
+        "github/codeql-action/autobuild@v4",
+        "github/codeql-action/analyze@v4",
+        "docker/setup-qemu-action@v4",
+        "docker/setup-buildx-action@v4",
+        "docker/login-action@v4",
+        "docker/build-push-action@v7",
+    ):
+        assert action in workflows
+
+    for deprecated in (
+        "actions/checkout@v3",
+        "actions/checkout@v4",
+        "actions/setup-python@v5",
+        "actions/upload-artifact@v4",
+        "actions/download-artifact@v4",
+        "github/codeql-action/init@v2",
+        "github/codeql-action/autobuild@v2",
+        "github/codeql-action/analyze@v2",
+        "docker/setup-qemu-action@v3",
+        "docker/setup-buildx-action@v3",
+        "docker/login-action@v3",
+        "docker/build-push-action@v6",
+    ):
+        assert deprecated not in workflows
 
 
 def test_release_workflow_builds_expected_targets_and_notes() -> None:
@@ -567,7 +606,7 @@ def test_release_version_is_7_5_0() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.5.0"
+    assert namespace["__version__"] == "7.5.1"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -600,11 +639,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.5.0",
+        "ghcr.io/jwwsjlm/edge-tts:7.5.1",
         "edge-tts-linux-amd64-docker-offline.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.5.0",
+        "EDGE_TTS_IMAGE_TAG=7.5.1",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -697,17 +736,17 @@ def test_current_release_docs_use_python_3_14_and_version_7_5_0() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS + Xiaomi MiMo 7.5.0" in readme
+    assert "# Edge TTS + Xiaomi MiMo 7.5.1" in readme
     assert "推荐 Python 3.14" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.5.0" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.5.1" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.5.0" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.5.0" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.1" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.5.1" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.5.0" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.5.0" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.1" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.5.1" in panel
     assert "Python 3.14" in notes
 
 
