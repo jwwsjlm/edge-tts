@@ -146,9 +146,11 @@ mimo_api_key: null
 mimo_base_url: "https://api.xiaomimimo.com/v1"
 mimo_request_timeout_seconds: 120
 max_reference_audio_bytes: 10485760
+mimo_recommended_max_text_length: 600
 ```
 
 `mimo_api_key: null` 时 Edge TTS 完全可用，MiMo 请求返回 `503 provider_not_configured`。MiMo 密钥仅用于访问上游，不等同于客户端使用的 `api_key`。
+MiMo 的 3000 字符是上游硬限制；`mimo_recommended_max_text_length` 默认 600，仅用于生成稳定性提示，不会自动拒绝请求。
 
 ## 模型能力
 

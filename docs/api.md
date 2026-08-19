@@ -13,7 +13,7 @@ curl http://127.0.0.1:5050/v1/models -H "X-API-Key: YOUR_KEY"
 ## 公共约定
 
 - 所有响应含服务端生成的 `X-Request-ID`。
-- 错误统一为 `{"error":"invalid_request","message":"..."}`。
+- 错误统一为 `{"error":"invalid_request","message":"...","fields":[...]}`；`fields` 仅在请求字段校验失败时出现。
 - 鉴权发生在正文读取、JSON 解析和上游请求之前。
 - 日志不记录 Key、正文、代理 URL 或代理凭据。
 
@@ -77,8 +77,30 @@ curl "http://127.0.0.1:5050/v1/voices?model=edge-tts&locale=zh-CN&language=zh&ge
 | `mimo_mode` | string | 否 | `preset` | `preset`、`design`、`clone` |
 | `voice_description` | string/null | 否 | `null` | MiMo design 模式必填 |
 | `reference_audio` | string/null | 否 | `null` | MiMo clone 模式必填，WAV/MP3 Base64 data URL |
+| `segment_id` | string/null | 否 | `null` | 可选的分段标识，最多 128 个字符 |
+| `sequence` | integer/null | 否 | `null` | 可选的 1-based 分段序号，用于客户端按顺序合并 |
 
 未知字段、错误类型和无效参数返回 `400 invalid_request`。成功为完整 `audio/mpeg` 或 `audio/wav`。Edge 原生 MP3、MiMo 原生 WAV；请求另一种格式时使用发行包内置 FFmpeg 转换。
+
+成功响应会返回以下关联和基础质量响应头：
+
+```http
+X-Request-ID: 服务端请求 ID
+X-Text-SHA256: 输入文本 UTF-8 的 SHA-256
+X-Audio-Bytes: 返回音频字节数
+X-Segment-ID: 请求提供时原样返回
+X-Sequence: 请求提供时原样返回
+X-Quality-Status: pass 或 fail
+```
+
+MiMo 的 3,000 字符是上游硬限制。`mimo_recommended_max_text_length` 默认值为 600，超过后仍会生成，但响应会增加：
+
+```http
+X-Text-Length-Warning: recommended_limit_exceeded
+X-Recommended-Max-Text-Length: 600
+```
+
+推荐在 500～600 字左右切分恐怖故事等长文本，并用 `segment_id`、`sequence` 和 `X-Text-SHA256` 记录每段。服务端不会自动拆分或合并音频。
 
 ### Edge 参数如何调节
 

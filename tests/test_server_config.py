@@ -51,6 +51,7 @@ def test_legacy_config_receives_hardened_defaults(tmp_path: Path) -> None:
     assert config.mimo_base_url == "https://api.xiaomimimo.com/v1"
     assert config.mimo_request_timeout_seconds == 120
     assert config.max_reference_audio_bytes == 10485760
+    assert config.mimo_recommended_max_text_length == 600
 
 
 def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
@@ -76,6 +77,7 @@ def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
                 'mimo_base_url: "https://mimo.example.test/v1"',
                 "mimo_request_timeout_seconds: 25",
                 "max_reference_audio_bytes: 1024",
+                "mimo_recommended_max_text_length: 400",
             )
         ),
     )
@@ -98,6 +100,7 @@ def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
         mimo_base_url="https://mimo.example.test/v1",
         mimo_request_timeout_seconds=25,
         max_reference_audio_bytes=1024,
+        mimo_recommended_max_text_length=400,
     )
 
 

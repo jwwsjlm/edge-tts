@@ -67,6 +67,7 @@ mimo_api_key: null
 mimo_base_url: "https://api.xiaomimimo.com/v1"
 mimo_request_timeout_seconds: 120
 max_reference_audio_bytes: 10485760
+mimo_recommended_max_text_length: 600
 ```
 
 `api_key` 是客户端 `X-API-Key` 请求头使用的密钥。不要提交真实配置；修改后需重启服务。

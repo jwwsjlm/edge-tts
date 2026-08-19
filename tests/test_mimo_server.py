@@ -187,6 +187,44 @@ async def test_mimo_preset_returns_native_wav_and_uses_default_voice() -> None:
 
 
 @pytest.mark.asyncio
+async def test_synthesis_returns_segment_and_text_integrity_headers() -> None:
+    """Long-text callers can correlate and verify each buffered audio segment."""
+    mimo = FakeMiMoClient()
+    async with client_for(mimo) as client:
+        response = await client.post(
+            "/v1/tts",
+            headers=AUTH,
+            json={
+                "model": "mimo-v2-tts",
+                "text": "x" * 601,
+                "segment_id": "story-001",
+                "sequence": 1,
+                "response_format": "wav",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["X-Segment-ID"] == "story-001"
+    assert response.headers["X-Sequence"] == "1"
+    assert response.headers["X-Text-SHA256"]
+    assert response.headers["X-Text-Length-Warning"] == "recommended_limit_exceeded"
+    assert response.headers["X-Recommended-Max-Text-Length"] == "600"
+    assert response.headers["X-Quality-Status"] == "fail"
+
+
+@pytest.mark.asyncio
+async def test_root_route_returns_service_discovery() -> None:
+    """Operators can discover health, docs and model routes from the root."""
+    async with client_for(FakeMiMoClient()) as client:
+        response = await client.get("/")
+
+    assert response.status_code == 200
+    assert response.json()["service"] == "Edge TTS + MiMo HTTP Server"
+    assert response.json()["health"] == "/health"
+    assert response.json()["models"] == "/v1/models"
+
+
+@pytest.mark.asyncio
 async def test_mimo_mp3_output_uses_bounded_converter() -> None:
     """Default MP3 compatibility converts the native WAV inside the request slot."""
     mimo = FakeMiMoClient()

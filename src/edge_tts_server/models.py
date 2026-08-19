@@ -2,7 +2,7 @@
 
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from edge_tts.constants import DEFAULT_VOICE
 
@@ -68,6 +68,17 @@ class TTSRequest(BaseModel):
             "Required only for MiMo clone mode. A Base64 data URL containing a "
             "valid WAV or MP3 file."
         ),
+    )
+    segment_id: Optional[StrictStr] = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Optional caller-defined identifier for a long-text segment.",
+    )
+    sequence: Optional[StrictInt] = Field(
+        default=None,
+        ge=1,
+        description="Optional 1-based sequence number used when assembling segments.",
     )
 
 

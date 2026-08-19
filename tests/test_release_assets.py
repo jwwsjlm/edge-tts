@@ -27,6 +27,7 @@ HARDENED_LIMITS = {
     "mimo_base_url": "https://api.xiaomimimo.com/v1",
     "mimo_request_timeout_seconds": 120,
     "max_reference_audio_bytes": 10485760,
+    "mimo_recommended_max_text_length": 600,
 }
 
 

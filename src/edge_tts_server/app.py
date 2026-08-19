@@ -1,8 +1,9 @@
 """Authenticated and resource-bounded FastAPI application."""
 
-# pylint: disable=too-few-public-methods,too-many-statements
+# pylint: disable=too-few-public-methods,too-many-statements,too-many-lines,too-many-locals
 
 import asyncio
+import hashlib
 import hmac
 import io
 import json
@@ -104,10 +105,58 @@ def _error(status: int, code: str, message: str, request: Request) -> JSONRespon
     )
 
 
+def _field_error(
+    status: int,
+    code: str,
+    message: str,
+    request: Request,
+    fields: List[Dict[str, Any]],
+) -> JSONResponse:
+    """Create a stable field-level validation error without exposing secrets."""
+    request.state.error_type = code
+    return JSONResponse(
+        status_code=status,
+        content={"error": code, "message": message, "fields": fields},
+    )
+
+
 def _scope_error(scope: Scope, status: int, code: str, message: str) -> JSONResponse:
     """Create an error before a FastAPI request object exists."""
     scope.setdefault("state", {})["error_type"] = code
     return JSONResponse(status_code=status, content={"error": code, "message": message})
+
+
+def _audio_headers(
+    payload: TTSRequest, audio: bytes, audio_format: str, config: ServerConfig
+) -> Dict[str, str]:
+    """Build safe correlation and basic quality metadata headers."""
+    headers = {
+        "X-Text-SHA256": hashlib.sha256(payload.text.encode("utf-8")).hexdigest(),
+        "X-Audio-Bytes": str(len(audio)),
+    }
+    if payload.segment_id is not None:
+        headers["X-Segment-ID"] = payload.segment_id
+    if payload.sequence is not None:
+        headers["X-Sequence"] = str(payload.sequence)
+    if (
+        payload.model == "mimo-v2-tts"
+        and len(payload.text) > config.mimo_recommended_max_text_length
+    ):
+        headers["X-Text-Length-Warning"] = "recommended_limit_exceeded"
+        headers["X-Recommended-Max-Text-Length"] = str(
+            config.mimo_recommended_max_text_length
+        )
+    wav_valid = len(audio) >= 44 and audio[:4] == b"RIFF" and audio[8:12] == b"WAVE"
+    mp3_valid = audio.startswith(b"ID3") or (
+        len(audio) >= 2 and audio[0] == 0xFF and (audio[1] & 0xE0) == 0xE0
+    )
+    if (audio_format == "wav" and not wav_valid) or (
+        audio_format == "mp3" and not mp3_valid
+    ):
+        headers["X-Quality-Status"] = "fail"
+    else:
+        headers["X-Quality-Status"] = "pass"
+    return headers
 
 
 class RequestContextMiddleware:
@@ -559,9 +608,25 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(
-        request: Request, _exc: RequestValidationError
+        request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        return _error(400, "invalid_request", "Request body is invalid", request)
+        fields: List[Dict[str, Any]] = []
+        for item in exc.errors():
+            location = [str(part) for part in item.get("loc", []) if part != "body"]
+            field = ".".join(location) or "body"
+            fields.append(
+                {
+                    "field": field,
+                    "reason": str(item.get("msg", "invalid value")),
+                }
+            )
+        return _field_error(
+            400,
+            "invalid_request",
+            "Request body is invalid",
+            request,
+            fields,
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -574,6 +639,17 @@ def create_app(
     @app.get("/health", tags=["service"])
     async def health() -> Dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/", tags=["service"])
+    async def service_info() -> Dict[str, Optional[str]]:
+        """Return a small discovery document for operators and first-time users."""
+        return {
+            "service": "Edge TTS + MiMo HTTP Server",
+            "version": __version__,
+            "docs": "/docs" if config.docs_enabled else None,
+            "health": "/health",
+            "models": "/v1/models",
+        }
 
     @app.get(
         "/v1/models",
@@ -889,12 +965,12 @@ def create_app(
             return result
         audio, _subtitles, audio_format = result
         media_type = "audio/mpeg" if audio_format == "mp3" else "audio/wav"
+        headers = _audio_headers(payload, audio, audio_format, config)
+        headers["Content-Disposition"] = f'inline; filename="speech.{audio_format}"'
         return Response(
             content=audio,
             media_type=media_type,
-            headers={
-                "Content-Disposition": f'inline; filename="speech.{audio_format}"'
-            },
+            headers=headers,
         )
 
     @app.post(
@@ -928,10 +1004,12 @@ def create_app(
         ) as archive:
             archive.writestr("speech.mp3", audio)
             archive.writestr("speech.srt", subtitles.encode("utf-8"))
+        headers = _audio_headers(payload, audio, "mp3", config)
+        headers["Content-Disposition"] = 'attachment; filename="speech-bundle.zip"'
         return Response(
             content=bundle.getvalue(),
             media_type="application/zip",
-            headers={"Content-Disposition": 'attachment; filename="speech-bundle.zip"'},
+            headers=headers,
         )
 
     app.add_middleware(BodyLimitMiddleware, max_bytes=config.max_request_bytes)

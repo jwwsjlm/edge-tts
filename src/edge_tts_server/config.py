@@ -29,6 +29,7 @@ _ALLOWED_KEYS = frozenset(
         "mimo_base_url",
         "mimo_request_timeout_seconds",
         "max_reference_audio_bytes",
+        "mimo_recommended_max_text_length",
     )
 )
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -59,6 +60,7 @@ class ServerConfig:  # pylint: disable=too-many-instance-attributes
     mimo_base_url: str = "https://api.xiaomimimo.com/v1"
     mimo_request_timeout_seconds: int = 120
     max_reference_audio_bytes: int = 10485760
+    mimo_recommended_max_text_length: int = 600
 
 
 def _valid_host(host: str) -> bool:
@@ -117,6 +119,7 @@ def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-loca
     mimo_base_url = raw.get("mimo_base_url", "https://api.xiaomimimo.com/v1")
     mimo_request_timeout_seconds = raw.get("mimo_request_timeout_seconds", 120)
     max_reference_audio_bytes = raw.get("max_reference_audio_bytes", 10485760)
+    mimo_recommended_max_text_length = raw.get("mimo_recommended_max_text_length", 600)
 
     if not isinstance(api_key, str) or not api_key.strip():
         raise ConfigError("api_key must be a non-empty string")
@@ -135,6 +138,7 @@ def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-loca
         "upstream_receive_timeout_seconds": upstream_receive_timeout_seconds,
         "mimo_request_timeout_seconds": mimo_request_timeout_seconds,
         "max_reference_audio_bytes": max_reference_audio_bytes,
+        "mimo_recommended_max_text_length": mimo_recommended_max_text_length,
     }
     for name, value in limits.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -168,6 +172,7 @@ def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-loca
         mimo_base_url=mimo_base_url,
         mimo_request_timeout_seconds=mimo_request_timeout_seconds,
         max_reference_audio_bytes=max_reference_audio_bytes,
+        mimo_recommended_max_text_length=mimo_recommended_max_text_length,
     )
 
 
