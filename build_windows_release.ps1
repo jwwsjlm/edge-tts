@@ -12,8 +12,9 @@ function Stop-ReleaseProcesses {
     param([string]$ExecutablePath)
 
     $ManagedPath = [IO.Path]::GetFullPath($ExecutablePath)
+    $ExecutableName = [IO.Path]::GetFileName($ManagedPath).Replace("'", "''")
     $Matching = @(
-        Get-CimInstance Win32_Process -Filter "Name = 'edge-tts-server.exe'" |
+        Get-CimInstance Win32_Process -Filter "Name = '$ExecutableName'" |
             Where-Object {
                 $null -ne $_.ExecutablePath -and
                 [IO.Path]::GetFullPath($_.ExecutablePath).Equals($ManagedPath, [StringComparison]::OrdinalIgnoreCase)
@@ -25,7 +26,7 @@ function Stop-ReleaseProcesses {
 
     for ($Attempt = 0; $Attempt -lt 20; $Attempt++) {
         $Remaining = @(
-            Get-CimInstance Win32_Process -Filter "Name = 'edge-tts-server.exe'" |
+            Get-CimInstance Win32_Process -Filter "Name = '$ExecutableName'" |
                 Where-Object {
                     $null -ne $_.ExecutablePath -and
                     [IO.Path]::GetFullPath($_.ExecutablePath).Equals($ManagedPath, [StringComparison]::OrdinalIgnoreCase)
@@ -46,10 +47,13 @@ if (-not $ReleaseRoot.StartsWith($ExpectedPrefix, [StringComparison]::OrdinalIgn
 Push-Location $Root
 try {
     $PackagedExe = Join-Path $ReleaseRoot "edge-tts-windows-x64-standalone/edge-tts-server.exe"
+    $StandaloneExe = Join-Path $ReleaseRoot "edge-tts-windows-x64.exe"
     Stop-ReleaseProcesses -ExecutablePath $PackagedExe
+    Stop-ReleaseProcesses -ExecutablePath $StandaloneExe
     if (Test-Path -LiteralPath $ReleaseRoot) {
         Remove-Item -LiteralPath $ReleaseRoot -Recurse -Force
     }
+    New-Item -ItemType Directory -Path $ReleaseRoot -Force | Out-Null
 
     & $Python -m PyInstaller --clean --noconfirm "edge-tts-server.spec"
     if ($LASTEXITCODE -ne 0) {
@@ -60,6 +64,10 @@ try {
     if (-not (Test-Path -LiteralPath $ExeSource -PathType Leaf)) {
         throw "PyInstaller output is missing: $ExeSource"
     }
+
+    # Publish a clearly named one-file executable in addition to the full ZIP.
+    # The frozen CLI reads or creates config.yaml beside this executable.
+    Copy-Item -LiteralPath $ExeSource -Destination $StandaloneExe
 
     $Bundle = Join-Path $ReleaseRoot "edge-tts-windows-x64-standalone"
     New-Item -ItemType Directory -Path $Bundle -Force | Out-Null
@@ -113,11 +121,49 @@ port: $Port
             Stop-ReleaseProcesses -ExecutablePath $PackagedExe
             Remove-Item -LiteralPath $TempConfig -Force -ErrorAction SilentlyContinue
         }
+
+        # Verify the published single-file EXE reads config.yaml beside itself.
+        $StandaloneConfig = Join-Path $ReleaseRoot "config.yaml"
+        @"
+api_key: "release-single-file-smoke"
+host: "127.0.0.1"
+port: $Port
+"@ | Set-Content -LiteralPath $StandaloneConfig -Encoding UTF8
+        $StandaloneProcess = $null
+        try {
+            $StandaloneProcess = Start-Process -FilePath $StandaloneExe -PassThru -WindowStyle Hidden
+            $Healthy = $false
+            for ($Attempt = 0; $Attempt -lt 40; $Attempt++) {
+                if ($StandaloneProcess.HasExited) {
+                    throw "Single-file EXE exited before becoming healthy (exit code $($StandaloneProcess.ExitCode))"
+                }
+                try {
+                    $Health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 1
+                    if ($Health.status -eq "ok") {
+                        $Healthy = $true
+                        break
+                    }
+                } catch {
+                    Start-Sleep -Milliseconds 250
+                }
+            }
+            if (-not $Healthy) {
+                throw "Single-file EXE did not answer /health"
+            }
+        } finally {
+            if ($null -ne $StandaloneProcess -and -not $StandaloneProcess.HasExited) {
+                Stop-Process -Id $StandaloneProcess.Id -Force
+                $StandaloneProcess.WaitForExit()
+            }
+            Stop-ReleaseProcesses -ExecutablePath $StandaloneExe
+            Remove-Item -LiteralPath $StandaloneConfig -Force -ErrorAction SilentlyContinue
+        }
     }
 
     $Archive = Join-Path $ReleaseRoot "edge-tts-windows-x64-standalone.zip"
     Compress-Archive -Path $Bundle -DestinationPath $Archive -CompressionLevel Optimal
     Write-Host "Windows release created: $Archive"
+    Write-Host "Windows single-file executable created: $StandaloneExe"
 } finally {
     Pop-Location
 }

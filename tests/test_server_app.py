@@ -917,7 +917,7 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
     assert docs.status_code == 200
     assert "Swagger UI" in docs.text
     assert schema_response.status_code == 200
-    assert schema["info"]["version"] == "7.4.2"
+    assert schema["info"]["version"] == "7.5.0"
     assert schema["components"]["securitySchemes"]["APIKeyHeader"] == {
         "type": "apiKey",
         "in": "header",
@@ -927,6 +927,7 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
         ("/v1/tts", "post"),
         ("/v1/tts/bundle", "post"),
         ("/v1/voices", "get"),
+        ("/v1/models", "get"),
     ):
         assert schema["paths"][path][method]["security"] == [{"APIKeyHeader": []}]
     bundle_schema = schema["components"]["schemas"]["TTSBundleRequest"]
@@ -935,6 +936,12 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
         "audio/mpeg"
         in schema["paths"]["/v1/tts"]["post"]["responses"]["200"]["content"]
     )
+    assert (
+        "audio/wav" in schema["paths"]["/v1/tts"]["post"]["responses"]["200"]["content"]
+    )
+    tts_schema = schema["components"]["schemas"]["TTSRequest"]
+    assert tts_schema["properties"]["model"]["default"] == "edge-tts"
+    assert tts_schema["properties"]["response_format"]["default"] == "mp3"
     assert (
         "application/zip"
         in schema["paths"]["/v1/tts/bundle"]["post"]["responses"]["200"]["content"]

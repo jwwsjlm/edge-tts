@@ -1,10 +1,11 @@
-# Edge TTS HTTP Server __VERSION__
+# Edge TTS + Xiaomi MiMo HTTP Server __VERSION__
 
-本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，保留 `POST /v1/tts`、`GET /health`、`X-API-Key` 与稳定错误 JSON，新增 `GET /v1/voices` 和 `POST /v1/tts/bundle`。这是原版能力的 HTTP 补全，不是 OpenAI API；所有音频与 ZIP 均完整缓冲返回。
+本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，`POST /v1/tts` 可通过 `model` 选择 Edge TTS 或 Xiaomi MiMo V2.5，并支持完整 MP3/WAV。MiMo 包含预置音色、音色设计和音色克隆；不是 OpenAI API，也不使用 HTTP 流式传输。
 
 ## 先按设备选择下载文件
 
 - **Windows 电脑本地运行**：`edge-tts-windows-x64-standalone.zip`。解压后双击 `01-start-server.bat`；无需 Python、Docker 或额外依赖。
+- **Windows 单文件运行**：`edge-tts-windows-x64.exe`。将 `config.yaml` 放在 EXE 同目录后双击；没有配置文件时会自动创建。
 - **Linux 服务器，已有 Python 3.14**：`edge-tts-linux-amd64-python314.tar.gz`。这是纯净运行包，依赖位于 `libs/`；不适用于 Windows。
 - **Linux 服务器 / 1Panel / Docker 离线部署**：`edge-tts-linux-amd64-docker-offline.tar.gz`。这是 Docker 离线镜像；不适用于 Windows，不能直接解压运行。
 - **核对下载完整性**：`SHA256SUMS.txt`。
@@ -55,15 +56,19 @@ api_key: "替换成足够长的随机密钥"
 host: "0.0.0.0"
 port: 5050
 max_text_length: 5000
-max_request_bytes: 65536
+max_request_bytes: 15728640
 max_concurrent_requests: 4
 request_timeout_seconds: 120
-max_audio_bytes: 20971520
+max_audio_bytes: 67108864
 docs_enabled: false
 voices_cache_ttl_seconds: 3600
 proxy: null
 upstream_connect_timeout_seconds: 10
 upstream_receive_timeout_seconds: 60
+mimo_api_key: null
+mimo_base_url: "https://api.xiaomimimo.com/v1"
+mimo_request_timeout_seconds: 120
+max_reference_audio_bytes: 10485760
 ```
 
 `api_key` 是客户端 `X-API-Key` 请求头使用的密钥。不要提交真实配置；修改后需重启服务。
@@ -133,8 +138,17 @@ curl http://127.0.0.1:5050/health
 curl -X POST http://127.0.0.1:5050/v1/tts \
   -H "Content-Type: application/json" \
   -H "X-API-Key: 替换成config中的密钥" \
-  -d '{"text":"你好，世界","voice":"zh-CN-XiaoxiaoNeural","rate":"+0%"}' \
+  -d '{"model":"edge-tts","text":"你好，世界","voice":"zh-CN-XiaoxiaoNeural","rate":"+0%"}' \
   --output speech.mp3
+```
+
+MiMo 配置 `mimo_api_key` 后可调用：
+
+```bash
+curl -X POST http://127.0.0.1:5050/v1/tts \
+  -H "Content-Type: application/json" -H "X-API-Key: 替换成config中的密钥" \
+  -d '{"model":"mimo-v2-tts","mimo_mode":"preset","voice":"冰糖","text":"你好，世界","response_format":"wav"}' \
+  --output speech.wav
 ```
 
 成功响应为 `audio/mpeg`，所有响应含 `X-Request-ID`。并发已满返回 `429 too_many_requests` 和 `Retry-After: 1`；请求、文本、音频超限返回对应 `413`；上游超时返回 `504 upstream_timeout`。

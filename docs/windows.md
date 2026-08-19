@@ -9,7 +9,7 @@ GitHub Release 已提供可双击运行的 x64 ZIP。本页用于需要从源码
 - PowerShell 5.1 或 7+
 - 首次安装依赖时可访问 PyPI
 
-目标电脑无需安装 Python，也无需联网下载运行库；语音合成本身仍需连接微软 TTS 上游。
+目标电脑无需安装 Python，也无需联网下载运行库；内置 FFmpeg 支持 Edge/MiMo 的 MP3/WAV 转换。语音合成本身仍需连接所选上游。
 
 ## 创建虚拟环境
 
@@ -44,11 +44,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\build_windows_release.ps1 -Python .\.venv\Scripts\python.exe -SkipSmokeTest
 ```
 
-规范文件会显式收集 FastAPI、Pydantic、Uvicorn 和服务包的动态模块。不要用系统中未安装完整运行依赖的 Python 调用 PyInstaller。
+规范文件会显式收集 FastAPI、Pydantic、Uvicorn、imageio-ffmpeg 和服务包的动态模块。不要用系统中未安装完整运行依赖的 Python 调用 PyInstaller。
+
+MiMo 使用前在 `config.yaml` 设置 `mimo_api_key`。客户端继续使用独立的 `api_key` 和 `X-API-Key`，通过 `/v1/models` 查看能力并在 `/v1/tts` 的 `model` 中选择 `edge-tts` 或 `mimo-v2-tts`。
 
 ## 产物位置
 
 - 单文件 EXE：`dist/edge-tts-server.exe`
+- Release 单文件 EXE：`releases/windows/edge-tts-windows-x64.exe`
 - 可分发目录：`releases/windows/edge-tts-windows-x64-standalone/`
 - 最终压缩包：`releases/windows/edge-tts-windows-x64-standalone.zip`
 
@@ -60,6 +63,8 @@ ZIP 包含：
 - `02-open-swagger.url`
 - `03-call-example.ps1`
 - `README-FIRST.txt`
+
+如果只想下载一个文件，可直接下载 `edge-tts-windows-x64.exe`。把 `config.yaml` 放在 EXE 同目录后双击即可；如果没有配置文件，程序会自动创建一个随机 `api_key` 配置。该单文件 EXE 不需要 Python、Docker 或安装依赖。
 
 不要把本机生成的 `config.yaml` 或真实 API Key 放进 ZIP。
 

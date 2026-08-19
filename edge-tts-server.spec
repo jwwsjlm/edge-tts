@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH)
 
@@ -10,12 +10,13 @@ analysis = Analysis(
     [str(ROOT / "src" / "edge_tts_server" / "__main__.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    datas=[],
+    datas=collect_data_files("imageio_ffmpeg"),
     hiddenimports=(
         collect_submodules("edge_tts_server")
         + collect_submodules("fastapi")
         + collect_submodules("pydantic")
         + collect_submodules("uvicorn")
+        + collect_submodules("imageio_ffmpeg")
     ),
     hookspath=[],
     hooksconfig={},

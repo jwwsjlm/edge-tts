@@ -1,7 +1,7 @@
-Edge TTS HTTP Server - Windows 本地双击版
+Edge TTS + Xiaomi MiMo HTTP Server - Windows 本地双击版
 ============================================
 
-这个文件夹可直接在 Windows x64 电脑上运行：无需安装 Python、Docker 或执行 pip install，启动时无需联网安装依赖。语音合成仍需能访问微软 TTS 上游。
+这个文件夹可直接在 Windows x64 电脑上运行：无需安装 Python、Docker 或执行 pip install，启动时无需联网安装依赖。语音合成仍需能访问所选择的 Edge 或 Xiaomi MiMo 上游。
 
 先看这四个文件
 --------------
@@ -48,3 +48,8 @@ Edge TTS HTTP Server - Windows 本地双击版
 带 X-API-Key 调用 /v1/voices?locale=zh-CN 可查询音色；把返回的 name 用于 /v1/tts 或 /v1/tts/bundle。Bundle 的 boundary 可选 WordBoundary 或 SentenceBoundary，下载 ZIP 固定只含 speech.mp3 和 speech.srt。
 
 proxy 是服务访问微软上游的全局 HTTP/HTTPS 代理，只能在 config.yaml 配置，不能由客户端请求传入。不要公开包含账号密码的代理地址。
+
+MiMo 多模型
+-----------
+
+在 config.yaml 设置 mimo_api_key 后，调用 /v1/models 查看能力。POST /v1/tts 的 model 可选择 edge-tts 或 mimo-v2-tts；MiMo 支持 preset、design、clone，并可返回完整 MP3/WAV。MiMo 密钥不得与客户端 api_key 混用或公开。

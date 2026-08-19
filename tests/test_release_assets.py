@@ -14,15 +14,19 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 HARDENED_LIMITS = {
     "max_text_length": 5000,
-    "max_request_bytes": 65536,
+    "max_request_bytes": 15728640,
     "max_concurrent_requests": 4,
     "request_timeout_seconds": 120,
-    "max_audio_bytes": 20971520,
+    "max_audio_bytes": 67108864,
     "docs_enabled": False,
     "voices_cache_ttl_seconds": 3600,
     "proxy": None,
     "upstream_connect_timeout_seconds": 10,
     "upstream_receive_timeout_seconds": 60,
+    "mimo_api_key": None,
+    "mimo_base_url": "https://api.xiaomimimo.com/v1",
+    "mimo_request_timeout_seconds": 120,
+    "max_reference_audio_bytes": 10485760,
 }
 
 
@@ -183,6 +187,7 @@ def test_windows_builder_defines_expected_archive_layout() -> None:
     for required in (
         "edge-tts-windows-x64-standalone",
         "edge-tts-server.exe",
+        "edge-tts-windows-x64.exe",
         "config.example.yaml",
         "01-start-server.bat",
         "02-open-swagger.url",
@@ -214,8 +219,9 @@ def test_pyinstaller_collects_fastapi_runtime_modules() -> None:
     """The standalone EXE must include framework modules loaded dynamically."""
     spec = (ROOT / "edge-tts-server.spec").read_text(encoding="utf-8")
 
-    for package in ("fastapi", "pydantic", "uvicorn"):
+    for package in ("fastapi", "pydantic", "uvicorn", "imageio_ffmpeg"):
         assert f'collect_submodules("{package}")' in spec
+    assert 'collect_data_files("imageio_ffmpeg")' in spec
 
     for development_only in (
         "IPython",
@@ -255,6 +261,7 @@ def test_release_asset_labels_make_platform_and_start_action_explicit() -> None:
 
     for label in (
         "Windows x64 | Standalone | Double-click 01-start-server.bat",
+        "Windows x64 | Single-file EXE | Reads config.yaml beside EXE",
         "01-start-server.bat",
         "Linux amd64 | Python 3.14 bundle",
         "Linux amd64 | Docker offline image | 1Panel",
@@ -415,6 +422,7 @@ def test_release_workflow_builds_expected_targets_and_notes() -> None:
         "src/edge_tts/version.py",
         "build_windows_release.ps1",
         "edge-tts-windows-x64-standalone.zip",
+        "edge-tts-windows-x64.exe",
         "Build clean Python 3.14 runtime bundle",
         "Smoke-test clean Python bundle without network",
         "python:3.14-slim",
@@ -555,11 +563,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_4_2() -> None:
+def test_release_version_is_7_5_0() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.4.2"
+    assert namespace["__version__"] == "7.5.0"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -592,11 +600,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.4.2",
+        "ghcr.io/jwwsjlm/edge-tts:7.5.0",
         "edge-tts-linux-amd64-docker-offline.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.4.2",
+        "EDGE_TTS_IMAGE_TAG=7.5.0",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -625,6 +633,7 @@ def test_api_guide_documents_complete_contract_and_clients() -> None:
 
     for required in (
         "GET /v1/voices",
+        "GET /v1/models",
         "POST /v1/tts",
         "POST /v1/tts/bundle",
         "X-API-Key",
@@ -634,8 +643,8 @@ def test_api_guide_documents_complete_contract_and_clients() -> None:
         "volume",
         "pitch",
         "5000",
-        "65536",
-        "20971520",
+        "15728640",
+        "67108864",
         "request_too_large",
         "text_too_long",
         "audio_too_large",
@@ -657,6 +666,8 @@ def test_api_guide_documents_complete_contract_and_clients() -> None:
         "原版功能",
         "/docs",
         "/openapi.json",
+        "mimo-v2-tts",
+        "mimo_api_key",
     ):
         assert required in guide
 
@@ -678,7 +689,7 @@ def test_windows_build_guide_is_complete() -> None:
         assert required in guide
 
 
-def test_current_release_docs_use_python_3_14_and_version_7_4_0() -> None:
+def test_current_release_docs_use_python_3_14_and_version_7_5_0() -> None:
     """Current quick starts should match the runtime and release being published."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     windows = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
@@ -686,17 +697,17 @@ def test_current_release_docs_use_python_3_14_and_version_7_4_0() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS 7.4.2" in readme
+    assert "# Edge TTS + Xiaomi MiMo 7.5.0" in readme
     assert "推荐 Python 3.14" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.4.2" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.5.0" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.4.2" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.4.2" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.0" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.5.0" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.4.2" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.4.2" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.0" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.5.0" in panel
     assert "Python 3.14" in notes
 
 
@@ -731,3 +742,36 @@ def test_distribution_docs_cover_7_4_original_capabilities() -> None:
             "proxy",
         ):
             assert required in content, f"{path} is missing {required}"
+
+
+def test_distribution_docs_cover_multi_model_mimo() -> None:
+    """Shipped documentation should explain model selection and MiMo setup."""
+    paths = (
+        ROOT / "README.md",
+        ROOT / "docs/api.md",
+        ROOT / "docs/docker.md",
+        ROOT / "docs/1panel.md",
+        ROOT / "docs/windows.md",
+        ROOT / ".github/release-notes.md",
+        ROOT / "packaging/windows/README-FIRST.txt",
+    )
+    for path in paths:
+        content = path.read_text(encoding="utf-8")
+        for required in ("mimo-v2-tts", "mimo_api_key"):
+            assert required in content, f"{path} is missing {required}"
+    assert "/v1/models" in (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "/v1/models" in (ROOT / "docs/api.md").read_text(encoding="utf-8")
+
+
+def test_multi_model_example_is_shipped() -> None:
+    """Users should have a Python client for all model-specific fields."""
+    example = (ROOT / "examples/multi_model_tts.py").read_text(encoding="utf-8")
+    for required in (
+        "--model",
+        "--mimo-mode",
+        "--voice-description",
+        "--reference-audio",
+        "--response-format",
+        "X-API-Key",
+    ):
+        assert required in example

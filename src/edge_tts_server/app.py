@@ -1,6 +1,6 @@
 """Authenticated and resource-bounded FastAPI application."""
 
-# pylint: disable=too-few-public-methods
+# pylint: disable=too-few-public-methods,too-many-statements
 
 import asyncio
 import hmac
@@ -10,7 +10,7 @@ import logging
 import time
 import uuid
 import zipfile
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Protocol
 
 import aiohttp
 from fastapi import FastAPI, Query, Request, Security
@@ -26,9 +26,24 @@ from edge_tts.submaker import SubMaker
 from edge_tts.typing import Voice
 from edge_tts.version import __version__
 
+from .audio import AudioConversionError, ConvertedAudioTooLarge, convert_audio
 from .config import ServerConfig
+from .mimo import (
+    MIMO_PRESET_VOICES,
+    MIMO_PUBLIC_MODEL,
+    MiMoAudioTooLarge,
+    MiMoClient,
+    MiMoError,
+    MiMoRateLimitError,
+    MiMoSynthesisRequest,
+    ReferenceAudioTooLarge,
+    normalize_reference_audio,
+    validate_preset_voice,
+)
 from .models import (
     ErrorResponse,
+    ModelInfo,
+    ModelsResponse,
     TTSBundleRequest,
     TTSRequest,
     VoiceInfo,
@@ -37,6 +52,16 @@ from .models import (
 
 CommunicatorFactory = Callable[..., Any]
 VoicesFactory = Callable[..., Awaitable[List[Voice]]]
+AudioConverter = Callable[[bytes, str, str, int], Awaitable[bytes]]
+
+
+class MiMoClientLike(Protocol):
+    """Minimal injectable MiMo client contract used by the application."""
+
+    async def synthesize(self, options: MiMoSynthesisRequest) -> bytes:
+        """Return complete WAV audio."""
+
+
 _ACCESS_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.access")
 _APP_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.app")
 _SYNTHESIS_ERROR_RESPONSES: Dict[int | str, Dict[str, Any]] = {
@@ -46,13 +71,17 @@ _SYNTHESIS_ERROR_RESPONSES: Dict[int | str, Dict[str, Any]] = {
     429: {"model": ErrorResponse},
     500: {"model": ErrorResponse},
     502: {"model": ErrorResponse},
+    503: {"model": ErrorResponse},
     504: {"model": ErrorResponse},
 }
 _TTS_RESPONSES: Dict[int | str, Dict[str, Any]] = {
     **_SYNTHESIS_ERROR_RESPONSES,
     200: {
-        "description": "Complete MP3 audio",
-        "content": {"audio/mpeg": {"schema": {"type": "string", "format": "binary"}}},
+        "description": "Complete MP3 or WAV audio",
+        "content": {
+            "audio/mpeg": {"schema": {"type": "string", "format": "binary"}},
+            "audio/wav": {"schema": {"type": "string", "format": "binary"}},
+        },
     },
 }
 _BUNDLE_RESPONSES: Dict[int | str, Dict[str, Any]] = {
@@ -180,6 +209,7 @@ class APIKeyMiddleware:
             ("/v1/tts", "POST"),
             ("/v1/tts/bundle", "POST"),
             ("/v1/voices", "GET"),
+            ("/v1/models", "GET"),
         }
         if scope["type"] == "http" and protected:
             supplied = ""
@@ -284,6 +314,25 @@ def _normalize_voice(voice: Voice) -> VoiceInfo:
         content_categories=list(voice_tag["ContentCategories"]),
         voice_personalities=list(voice_tag["VoicePersonalities"]),
     )
+
+
+def _mimo_voices() -> List[VoiceInfo]:
+    """Return the official static MiMo V2.5 preset voice catalog."""
+    return [
+        VoiceInfo(
+            name=voice.voice_id,
+            internal_name=voice.voice_id,
+            friendly_name=voice.voice_id,
+            locale=voice.locale,
+            language=voice.language,
+            gender=voice.gender,
+            status="GA",
+            suggested_codec="audio/wav;codec=pcm",
+            content_categories=["Preset"],
+            voice_personalities=[],
+        )
+        for voice in MIMO_PRESET_VOICES
+    ]
 
 
 class VoiceCache:  # pylint: disable=too-many-instance-attributes
@@ -407,17 +456,77 @@ def _validated_options(
     }
 
 
+def _validate_provider_request(
+    payload: TTSRequest,
+    config: ServerConfig,
+    boundary: Literal["WordBoundary", "SentenceBoundary"] = "SentenceBoundary",
+) -> tuple[Optional[Dict[str, str]], Optional[MiMoSynthesisRequest]]:
+    """Validate model-specific options without silently ignoring any field."""
+    if payload.model == "edge-tts":
+        if payload.mimo_mode != "preset":
+            raise ValueError("mimo_mode is only supported by mimo-v2-tts")
+        if payload.voice_description is not None or payload.reference_audio is not None:
+            raise ValueError("MiMo-only fields are not supported by edge-tts")
+        return _validated_options(payload, boundary), None
+
+    if len(payload.text) > min(config.max_text_length, 3000):
+        raise ValueError("MiMo text exceeds the 3000 character limit")
+    if payload.rate != "+0%" or payload.volume != "+0%" or payload.pitch != "+0Hz":
+        raise ValueError("rate, volume and pitch are not supported by mimo-v2-tts")
+
+    explicitly_set = payload.model_fields_set
+    if payload.mimo_mode == "preset":
+        if payload.voice_description is not None or payload.reference_audio is not None:
+            raise ValueError("preset mode does not accept design or clone fields")
+        voice = payload.voice if "voice" in explicitly_set else "mimo_default"
+        validate_preset_voice(voice)
+        return None, MiMoSynthesisRequest(
+            text=payload.text,
+            mode="preset",
+            voice=voice,
+        )
+
+    if "voice" in explicitly_set:
+        raise ValueError("voice is only supported by MiMo preset mode")
+    if payload.mimo_mode == "design":
+        if payload.reference_audio is not None:
+            raise ValueError("design mode does not accept reference_audio")
+        if payload.voice_description is None or not payload.voice_description.strip():
+            raise ValueError("voice_description is required for MiMo design mode")
+        return None, MiMoSynthesisRequest(
+            text=payload.text,
+            mode="design",
+            voice_description=payload.voice_description,
+        )
+
+    if payload.voice_description is not None:
+        raise ValueError("clone mode does not accept voice_description")
+    if payload.reference_audio is None:
+        raise ValueError("reference_audio is required for MiMo clone mode")
+    reference_audio = normalize_reference_audio(
+        payload.reference_audio,
+        config.max_reference_audio_bytes,
+    )
+    return None, MiMoSynthesisRequest(
+        text=payload.text,
+        mode="clone",
+        reference_audio=reference_audio,
+    )
+
+
 def create_app(
     config: ServerConfig,
     communicator_factory: CommunicatorFactory = Communicate,
     *,
     voices_factory: VoicesFactory = list_voices,
+    mimo_client: Optional[MiMoClientLike] = None,
+    audio_converter: AudioConverter = convert_audio,
 ) -> FastAPI:
     """Build an isolated FastAPI application with deployment safeguards."""
     docs_url = "/docs" if config.docs_enabled else None
     openapi_url = "/openapi.json" if config.docs_enabled else None
     app = FastAPI(
-        title="Edge TTS HTTP Server",
+        title="Edge TTS + MiMo HTTP Server",
         version=__version__,
         docs_url=docs_url,
         redoc_url=None,
@@ -434,6 +543,19 @@ def create_app(
         ttl_seconds=config.voices_cache_ttl_seconds,
         request_timeout_seconds=config.request_timeout_seconds,
     )
+    owned_mimo_client: Optional[MiMoClient] = None
+    if mimo_client is None and config.mimo_api_key is not None:
+        owned_mimo_client = MiMoClient(
+            config.mimo_api_key,
+            config.mimo_base_url,
+            config.mimo_request_timeout_seconds,
+            config.max_audio_bytes,
+            config.proxy,
+        )
+        mimo_client = owned_mimo_client
+
+    if owned_mimo_client is not None:
+        app.router.add_event_handler("shutdown", owned_mimo_client.close)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(
@@ -454,8 +576,46 @@ def create_app(
         return {"status": "ok"}
 
     @app.get(
+        "/v1/models",
+        tags=["models"],
+        summary="List supported synthesis models",
+        description=(
+            "Returns the available providers, voice modes, output formats and "
+            "subtitle support. Requires X-API-Key."
+        ),
+        response_model=ModelsResponse,
+        responses={401: {"model": ErrorResponse}},
+    )
+    async def models(
+        _api_key: Optional[str] = Security(api_key_header),
+    ) -> ModelsResponse:
+        return ModelsResponse(
+            models=[
+                ModelInfo(
+                    id="edge-tts",
+                    provider="Microsoft Edge",
+                    modes=["preset"],
+                    response_formats=["mp3", "wav"],
+                    supports_subtitles=True,
+                ),
+                ModelInfo(
+                    id=MIMO_PUBLIC_MODEL,
+                    provider="Xiaomi MiMo V2.5",
+                    modes=["preset", "design", "clone"],
+                    response_formats=["mp3", "wav"],
+                    supports_subtitles=False,
+                ),
+            ]
+        )
+
+    @app.get(
         "/v1/voices",
         tags=["voices"],
+        summary="List and filter voices",
+        description=(
+            "Returns Edge or MiMo preset voices. locale, language and gender are "
+            "case-insensitive exact-match filters. Requires X-API-Key."
+        ),
         response_model=VoicesResponse,
         responses={
             400: {"model": ErrorResponse},
@@ -465,9 +625,22 @@ def create_app(
     )
     async def voices(
         request: Request,
-        locale: Optional[str] = Query(default=None),
-        language: Optional[str] = Query(default=None),
-        gender: Optional[str] = Query(default=None),
+        locale: Optional[str] = Query(
+            default=None,
+            description="Exact locale filter, for example zh-CN or en-US.",
+        ),
+        language: Optional[str] = Query(
+            default=None,
+            description="Exact language-code filter, for example zh or en.",
+        ),
+        gender: Optional[str] = Query(
+            default=None,
+            description="Exact gender filter. Only Female or Male is accepted.",
+        ),
+        model: Literal["edge-tts", "mimo-v2-tts"] = Query(
+            default="edge-tts",
+            description="Voice provider. Omit it to list Edge TTS voices.",
+        ),
         _api_key: Optional[str] = Security(api_key_header),
     ) -> VoicesResponse | JSONResponse:
         if gender is not None and gender.casefold() not in {"female", "male"}:
@@ -477,20 +650,23 @@ def create_app(
                 "gender must be Female or Male",
                 request,
             )
-        try:
-            available = await voices_cache.get()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            _APP_LOGGER.error(
-                "Voice list refresh failed type=%s request_id=%s",
-                type(exc).__name__,
-                request.state.request_id,
-            )
-            return _error(
-                502,
-                "upstream_error",
-                "TTS upstream service failed",
-                request,
-            )
+        if model == MIMO_PUBLIC_MODEL:
+            available = _mimo_voices()
+        else:
+            try:
+                available = await voices_cache.get()
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _APP_LOGGER.error(
+                    "Voice list refresh failed type=%s request_id=%s",
+                    type(exc).__name__,
+                    request.state.request_id,
+                )
+                return _error(
+                    502,
+                    "upstream_error",
+                    "TTS upstream service failed",
+                    request,
+                )
 
         filters = {
             "locale": locale.casefold() if locale is not None else None,
@@ -507,13 +683,13 @@ def create_app(
         ]
         return VoicesResponse(voices=filtered)
 
-    async def run_synthesis(  # pylint: disable=too-many-return-statements
+    async def run_synthesis(  # pylint: disable=too-many-return-statements,too-many-branches
         payload: TTSRequest,
         request: Request,
         boundary: Literal["WordBoundary", "SentenceBoundary"],
         *,
         include_subtitles: bool,
-    ) -> tuple[bytes, str] | JSONResponse:
+    ) -> tuple[bytes, str, str] | JSONResponse:
         """Apply the shared validation, limits and error contract."""
         if not payload.text.strip():
             return _error(400, "invalid_request", "text must not be blank", request)
@@ -525,7 +701,38 @@ def create_app(
                 request,
             )
         try:
-            options = _validated_options(payload, boundary)
+            edge_options, mimo_options = _validate_provider_request(
+                payload, config, boundary
+            )
+            if include_subtitles:
+                if payload.model != "edge-tts":
+                    return _error(
+                        400,
+                        "unsupported_model",
+                        "Subtitles are only supported by edge-tts",
+                        request,
+                    )
+                if payload.response_format != "mp3":
+                    return _error(
+                        400,
+                        "invalid_request",
+                        "Bundle response_format must be mp3",
+                        request,
+                    )
+            if mimo_options is not None and mimo_client is None:
+                return _error(
+                    503,
+                    "provider_not_configured",
+                    "MiMo provider is not configured",
+                    request,
+                )
+        except ReferenceAudioTooLarge:
+            return _error(
+                413,
+                "reference_audio_too_large",
+                "Reference audio exceeds configured limit",
+                request,
+            )
         except (TypeError, ValueError) as exc:
             return _error(400, "invalid_request", str(exc), request)
 
@@ -542,13 +749,39 @@ def create_app(
         await capacity.acquire()
         try:
             try:
+
+                async def generate() -> tuple[bytes, str, str]:
+                    if edge_options is not None:
+                        audio, subtitles = await _collect_synthesis(
+                            edge_options,
+                            communicator_factory,
+                            config,
+                            include_subtitles=include_subtitles,
+                        )
+                        source_format = "mp3"
+                    else:
+                        assert mimo_client is not None
+                        assert mimo_options is not None
+                        audio = await mimo_client.synthesize(mimo_options)
+                        subtitles = ""
+                        source_format = "wav"
+                        if len(audio) > config.max_audio_bytes:
+                            raise AudioTooLarge
+                    if (
+                        not include_subtitles
+                        and source_format != payload.response_format
+                    ):
+                        audio = await audio_converter(
+                            audio,
+                            source_format,
+                            payload.response_format,
+                            config.max_audio_bytes,
+                        )
+                        source_format = payload.response_format
+                    return audio, subtitles, source_format
+
                 return await asyncio.wait_for(
-                    _collect_synthesis(
-                        options,
-                        communicator_factory,
-                        config,
-                        include_subtitles=include_subtitles,
-                    ),
+                    generate(),
                     timeout=config.request_timeout_seconds,
                 )
             except asyncio.TimeoutError:
@@ -563,6 +796,49 @@ def create_app(
                     413,
                     "audio_too_large",
                     "Generated audio exceeds configured limit",
+                    request,
+                )
+            except MiMoAudioTooLarge:
+                return _error(
+                    413,
+                    "audio_too_large",
+                    "Generated audio exceeds configured limit",
+                    request,
+                )
+            except ConvertedAudioTooLarge:
+                return _error(
+                    413,
+                    "audio_too_large",
+                    "Generated audio exceeds configured limit",
+                    request,
+                )
+            except MiMoRateLimitError as exc:
+                response = _error(
+                    503,
+                    "upstream_rate_limited",
+                    "MiMo upstream rate limit exceeded",
+                    request,
+                )
+                if exc.retry_after is not None:
+                    response.headers["Retry-After"] = exc.retry_after
+                return response
+            except MiMoError:
+                return _error(
+                    502,
+                    "upstream_error",
+                    "TTS upstream service failed",
+                    request,
+                )
+            except AudioConversionError as exc:
+                _APP_LOGGER.error(
+                    "Audio conversion failed type=%s request_id=%s",
+                    type(exc).__name__,
+                    request.state.request_id,
+                )
+                return _error(
+                    500,
+                    "internal_error",
+                    "Internal server error",
                     request,
                 )
             except (exceptions.EdgeTTSException, aiohttp.ClientError):
@@ -590,6 +866,11 @@ def create_app(
     @app.post(
         "/v1/tts",
         tags=["tts"],
+        summary="Synthesize complete audio",
+        description=(
+            "Synthesizes with Edge TTS or Xiaomi MiMo and returns one complete MP3 "
+            "or WAV response. This endpoint does not use HTTP streaming."
+        ),
         response_class=Response,
         responses=_TTS_RESPONSES,
     )
@@ -606,16 +887,24 @@ def create_app(
         )
         if isinstance(result, JSONResponse):
             return result
-        audio, _subtitles = result
+        audio, _subtitles, audio_format = result
+        media_type = "audio/mpeg" if audio_format == "mp3" else "audio/wav"
         return Response(
             content=audio,
-            media_type="audio/mpeg",
-            headers={"Content-Disposition": 'inline; filename="speech.mp3"'},
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'inline; filename="speech.{audio_format}"'
+            },
         )
 
     @app.post(
         "/v1/tts/bundle",
         tags=["tts"],
+        summary="Synthesize Edge audio and SRT subtitles",
+        description=(
+            "Returns a ZIP containing speech.mp3 and speech.srt from one Edge TTS "
+            "request. MiMo and WAV output are not supported by this endpoint."
+        ),
         response_class=Response,
         responses=_BUNDLE_RESPONSES,
     )
@@ -632,7 +921,7 @@ def create_app(
         )
         if isinstance(result, JSONResponse):
             return result
-        audio, subtitles = result
+        audio, subtitles, _audio_format = result
         bundle = io.BytesIO()
         with zipfile.ZipFile(
             bundle, mode="w", compression=zipfile.ZIP_DEFLATED

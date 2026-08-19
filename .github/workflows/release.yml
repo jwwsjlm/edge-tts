@@ -81,11 +81,13 @@ jobs:
         shell: pwsh
         run: ./build_windows_release.ps1
 
-      - name: Upload Windows ZIP
+      - name: Upload Windows assets
         uses: actions/upload-artifact@v4
         with:
           name: windows-release
-          path: releases/windows/edge-tts-windows-x64-standalone.zip
+          path: |
+            releases/windows/edge-tts-windows-x64-standalone.zip
+            releases/windows/edge-tts-windows-x64.exe
           if-no-files-found: error
 
   python_bundle:
@@ -303,6 +305,7 @@ jobs:
           cd release-assets
           sha256sum \
             edge-tts-windows-x64-standalone.zip \
+            edge-tts-windows-x64.exe \
             edge-tts-linux-amd64-python314.tar.gz \
             edge-tts-linux-amd64-docker-offline.tar.gz \
             | sort --key=2 > SHA256SUMS.txt
@@ -327,9 +330,10 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "release-assets/edge-tts-windows-x64-standalone.zip#Windows x64 | Standalone | Double-click 01-start-server.bat" \
+            "release-assets/edge-tts-windows-x64.exe#Windows x64 | Single-file EXE | Reads config.yaml beside EXE" \
             "release-assets/edge-tts-linux-amd64-python314.tar.gz#Linux amd64 | Python 3.14 bundle" \
             "release-assets/edge-tts-linux-amd64-docker-offline.tar.gz#Linux amd64 | Docker offline image | 1Panel" \
             "release-assets/SHA256SUMS.txt#SHA-256 checksums" \
             --verify-tag \
-            --title "Edge TTS Server ${VERSION} | Windows + Linux + Docker" \
+            --title "Edge TTS + Xiaomi MiMo ${VERSION} | Windows + Linux + Docker" \
             --notes-file release-notes.rendered.md

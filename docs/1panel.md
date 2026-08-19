@@ -22,15 +22,19 @@ api_key: "替换成至少 32 字节的随机密钥"
 host: "0.0.0.0"
 port: 5050
 max_text_length: 5000
-max_request_bytes: 65536
+max_request_bytes: 15728640
 max_concurrent_requests: 4
 request_timeout_seconds: 120
-max_audio_bytes: 20971520
+max_audio_bytes: 67108864
 docs_enabled: false
 voices_cache_ttl_seconds: 3600
 proxy: null
 upstream_connect_timeout_seconds: 10
 upstream_receive_timeout_seconds: 60
+mimo_api_key: null
+mimo_base_url: "https://api.xiaomimimo.com/v1"
+mimo_request_timeout_seconds: 120
+max_reference_audio_bytes: 10485760
 ```
 
 可在 1Panel 终端生成 Key：
@@ -47,8 +51,8 @@ openssl rand -base64 32
 
 ```bash
 cd /opt/edge-tts
-echo 'EDGE_TTS_IMAGE_TAG=7.4.2' > .env
-docker pull ghcr.io/jwwsjlm/edge-tts:7.4.2
+echo 'EDGE_TTS_IMAGE_TAG=7.5.0' > .env
+docker pull ghcr.io/jwwsjlm/edge-tts:7.5.0
 docker compose -f compose.yaml up -d
 ```
 
@@ -78,13 +82,13 @@ grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c 
 
 ```bash
 gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.4.2 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.0 >/dev/null
 ```
 
 创建 `.env` 并启动：
 
 ```bash
-echo 'EDGE_TTS_IMAGE_TAG=7.4.2' > .env
+echo 'EDGE_TTS_IMAGE_TAG=7.5.0' > .env
 docker compose -f compose.yaml up -d
 ```
 
@@ -179,3 +183,5 @@ unzip -l speech-bundle.zip
 ```
 
 ZIP 应只列出 `speech.mp3`、`speech.srt`。服务器访问微软上游需要代理时，在挂载的 `config.yaml` 设置 `proxy`，同时可调整 `upstream_connect_timeout_seconds` 和 `upstream_receive_timeout_seconds`；修改后用 Compose 重建容器。代理 URL 及凭据不得复制到面板公开日志或客户端参数。
+
+配置 `mimo_api_key` 后，`POST /v1/tts` 的 `model` 可选择 `mimo-v2-tts`；MiMo 的 `preset`、`design` 和 `clone` 模式见 API 文档。

@@ -1,6 +1,6 @@
 # Docker 部署 Edge TTS HTTP 服务
 
-发布镜像：`ghcr.io/jwwsjlm/edge-tts:7.4.2`，支持 `linux/amd64` 和 `linux/arm64`。服务器建议固定版本，不要长期依赖 `latest`。离线 Release 资产仅提供 `linux/amd64`。
+发布镜像：`ghcr.io/jwwsjlm/edge-tts:7.5.0`，支持 `linux/amd64` 和 `linux/arm64`。服务器建议固定版本，不要长期依赖 `latest`。离线 Release 资产仅提供 `linux/amd64`。
 
 ## 准备 config.yaml
 
@@ -25,15 +25,19 @@ api_key: "替换成足够长的随机密钥"
 host: "0.0.0.0"
 port: 5050
 max_text_length: 5000
-max_request_bytes: 65536
+max_request_bytes: 15728640
 max_concurrent_requests: 4
 request_timeout_seconds: 120
-max_audio_bytes: 20971520
+max_audio_bytes: 67108864
 docs_enabled: false
 voices_cache_ttl_seconds: 3600
 proxy: null
 upstream_connect_timeout_seconds: 10
 upstream_receive_timeout_seconds: 60
+mimo_api_key: null
+mimo_base_url: "https://api.xiaomimimo.com/v1"
+mimo_request_timeout_seconds: 120
+max_reference_audio_bytes: 10485760
 ```
 
 Docker 内 `host` 必须为 `0.0.0.0`。客户端通过 `X-API-Key` 提交密钥；不要提交真实 `config.yaml`。修改配置后需重启容器。
@@ -48,7 +52,7 @@ Docker 内 `host` 必须为 `0.0.0.0`。客户端通过 `X-API-Key` 提交密钥
 固定版本：
 
 ```bash
-printf 'EDGE_TTS_IMAGE_TAG=7.4.2\n' > .env
+printf 'EDGE_TTS_IMAGE_TAG=7.5.0\n' > .env
 docker compose -f compose.yaml pull
 docker compose -f compose.yaml up -d
 ```
@@ -88,7 +92,7 @@ docker compose -f compose.dev.yaml up -d --build
 ## 在线 docker run
 
 ```bash
-docker pull ghcr.io/jwwsjlm/edge-tts:7.4.2
+docker pull ghcr.io/jwwsjlm/edge-tts:7.5.0
 docker run -d \
   --name edge-tts \
   --restart unless-stopped \
@@ -97,7 +101,7 @@ docker run -d \
   --dns 223.5.5.5 --dns 119.29.29.29 \
   -p 5050:5050 \
   --mount type=bind,source="$(pwd)/config.yaml",target=/config/config.yaml,readonly \
-  ghcr.io/jwwsjlm/edge-tts:7.4.2
+  ghcr.io/jwwsjlm/edge-tts:7.5.0
 ```
 
 如果 GHCR Package 不是 Public，需要有 `read:packages` 权限的 Token：
@@ -129,7 +133,7 @@ grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c 
 
 ```bash
 gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.4.2 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.0 >/dev/null
 ```
 
 然后准备 `config.yaml`、`compose.yaml` 和 `.env`，执行：
@@ -165,6 +169,8 @@ unzip speech-bundle.zip speech.mp3 speech.srt
 ```
 
 `proxy` 是音色查询和合成共用的服务端全局代理；按需在 `config.yaml` 填写绝对 HTTP/HTTPS URL，并结合 `upstream_connect_timeout_seconds`、`upstream_receive_timeout_seconds` 调整上游超时。不要把代理凭据放进 Compose 或调用正文。
+
+配置 `mimo_api_key` 后，`POST /v1/tts` 的 `model` 可选择 `mimo-v2-tts`；MiMo 的 `preset`、`design` 和 `clone` 模式见 API 文档。
 
 ## HTTPS 与端口保护
 

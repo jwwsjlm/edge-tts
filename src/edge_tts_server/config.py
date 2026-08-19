@@ -25,6 +25,10 @@ _ALLOWED_KEYS = frozenset(
         "proxy",
         "upstream_connect_timeout_seconds",
         "upstream_receive_timeout_seconds",
+        "mimo_api_key",
+        "mimo_base_url",
+        "mimo_request_timeout_seconds",
+        "max_reference_audio_bytes",
     )
 )
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -42,15 +46,19 @@ class ServerConfig:  # pylint: disable=too-many-instance-attributes
     host: str = "127.0.0.1"
     port: int = 5050
     max_text_length: int = 5000
-    max_request_bytes: int = 65536
+    max_request_bytes: int = 15728640
     max_concurrent_requests: int = 4
     request_timeout_seconds: int = 120
-    max_audio_bytes: int = 20971520
+    max_audio_bytes: int = 67108864
     docs_enabled: bool = False
     voices_cache_ttl_seconds: int = 3600
     proxy: str | None = None
     upstream_connect_timeout_seconds: int = 10
     upstream_receive_timeout_seconds: int = 60
+    mimo_api_key: str | None = None
+    mimo_base_url: str = "https://api.xiaomimimo.com/v1"
+    mimo_request_timeout_seconds: int = 120
+    max_reference_audio_bytes: int = 10485760
 
 
 def _valid_host(host: str) -> bool:
@@ -83,7 +91,7 @@ def _valid_proxy(proxy: str) -> bool:
     )
 
 
-def _validate_config(raw: Any) -> ServerConfig:
+def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-locals
     """Validate parsed YAML without coercing caller values."""
     if not isinstance(raw, Mapping):
         raise ConfigError("Configuration must be a YAML mapping")
@@ -96,15 +104,19 @@ def _validate_config(raw: Any) -> ServerConfig:
     host = raw.get("host", "127.0.0.1")
     port = raw.get("port", 5050)
     max_text_length = raw.get("max_text_length", 5000)
-    max_request_bytes = raw.get("max_request_bytes", 65536)
+    max_request_bytes = raw.get("max_request_bytes", 15728640)
     max_concurrent_requests = raw.get("max_concurrent_requests", 4)
     request_timeout_seconds = raw.get("request_timeout_seconds", 120)
-    max_audio_bytes = raw.get("max_audio_bytes", 20971520)
+    max_audio_bytes = raw.get("max_audio_bytes", 67108864)
     docs_enabled = raw.get("docs_enabled", False)
     voices_cache_ttl_seconds = raw.get("voices_cache_ttl_seconds", 3600)
     proxy = raw.get("proxy")
     upstream_connect_timeout_seconds = raw.get("upstream_connect_timeout_seconds", 10)
     upstream_receive_timeout_seconds = raw.get("upstream_receive_timeout_seconds", 60)
+    mimo_api_key = raw.get("mimo_api_key")
+    mimo_base_url = raw.get("mimo_base_url", "https://api.xiaomimimo.com/v1")
+    mimo_request_timeout_seconds = raw.get("mimo_request_timeout_seconds", 120)
+    max_reference_audio_bytes = raw.get("max_reference_audio_bytes", 10485760)
 
     if not isinstance(api_key, str) or not api_key.strip():
         raise ConfigError("api_key must be a non-empty string")
@@ -121,6 +133,8 @@ def _validate_config(raw: Any) -> ServerConfig:
         "voices_cache_ttl_seconds": voices_cache_ttl_seconds,
         "upstream_connect_timeout_seconds": upstream_connect_timeout_seconds,
         "upstream_receive_timeout_seconds": upstream_receive_timeout_seconds,
+        "mimo_request_timeout_seconds": mimo_request_timeout_seconds,
+        "max_reference_audio_bytes": max_reference_audio_bytes,
     }
     for name, value in limits.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -129,6 +143,12 @@ def _validate_config(raw: Any) -> ServerConfig:
         raise ConfigError("docs_enabled must be a boolean")
     if proxy is not None and (not isinstance(proxy, str) or not _valid_proxy(proxy)):
         raise ConfigError("proxy must be null or an absolute HTTP(S) URL")
+    if mimo_api_key is not None and (
+        not isinstance(mimo_api_key, str) or not mimo_api_key.strip()
+    ):
+        raise ConfigError("mimo_api_key must be null or a non-empty string")
+    if not isinstance(mimo_base_url, str) or not _valid_proxy(mimo_base_url):
+        raise ConfigError("mimo_base_url must be an absolute HTTP(S) URL")
 
     return ServerConfig(
         api_key=api_key,
@@ -144,6 +164,10 @@ def _validate_config(raw: Any) -> ServerConfig:
         proxy=proxy,
         upstream_connect_timeout_seconds=upstream_connect_timeout_seconds,
         upstream_receive_timeout_seconds=upstream_receive_timeout_seconds,
+        mimo_api_key=mimo_api_key,
+        mimo_base_url=mimo_base_url,
+        mimo_request_timeout_seconds=mimo_request_timeout_seconds,
+        max_reference_audio_bytes=max_reference_audio_bytes,
     )
 
 

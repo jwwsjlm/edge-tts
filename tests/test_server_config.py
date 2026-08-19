@@ -38,15 +38,19 @@ def test_legacy_config_receives_hardened_defaults(tmp_path: Path) -> None:
     config = load_or_create_config(path)
 
     assert config.max_text_length == 5000
-    assert config.max_request_bytes == 65536
+    assert config.max_request_bytes == 15728640
     assert config.max_concurrent_requests == 4
     assert config.request_timeout_seconds == 120
-    assert config.max_audio_bytes == 20971520
+    assert config.max_audio_bytes == 67108864
     assert config.docs_enabled is False
     assert config.voices_cache_ttl_seconds == 3600
     assert config.proxy is None
     assert config.upstream_connect_timeout_seconds == 10
     assert config.upstream_receive_timeout_seconds == 60
+    assert config.mimo_api_key is None
+    assert config.mimo_base_url == "https://api.xiaomimimo.com/v1"
+    assert config.mimo_request_timeout_seconds == 120
+    assert config.max_reference_audio_bytes == 10485760
 
 
 def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
@@ -68,6 +72,10 @@ def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
                 'proxy: "http://proxy-user:proxy-pass@proxy.example:8080"',
                 "upstream_connect_timeout_seconds: 4",
                 "upstream_receive_timeout_seconds: 20",
+                'mimo_api_key: "mimo-secret"',
+                'mimo_base_url: "https://mimo.example.test/v1"',
+                "mimo_request_timeout_seconds: 25",
+                "max_reference_audio_bytes: 1024",
             )
         ),
     )
@@ -86,6 +94,10 @@ def test_hardened_limits_are_loaded(tmp_path: Path) -> None:
         proxy="http://proxy-user:proxy-pass@proxy.example:8080",
         upstream_connect_timeout_seconds=4,
         upstream_receive_timeout_seconds=20,
+        mimo_api_key="mimo-secret",
+        mimo_base_url="https://mimo.example.test/v1",
+        mimo_request_timeout_seconds=25,
+        max_reference_audio_bytes=1024,
     )
 
 
@@ -131,6 +143,10 @@ def test_generated_keys_are_not_reused(tmp_path: Path) -> None:
         'api_key: "secret"\nproxy: "proxy.example:8080"\n',
         'api_key: "secret"\nproxy: "ftp://proxy.example"\n',
         'api_key: "secret"\nproxy: "http:///missing-host"\n',
+        'api_key: "secret"\nmimo_api_key: ""\n',
+        'api_key: "secret"\nmimo_base_url: "missing-scheme"\n',
+        'api_key: "secret"\nmimo_request_timeout_seconds: 0\n',
+        'api_key: "secret"\nmax_reference_audio_bytes: 0\n',
         "- not\n- a\n- mapping\n",
         "api_key: [unterminated\n",
     ],
@@ -155,6 +171,10 @@ def test_invalid_config_is_rejected(tmp_path: Path, content: str) -> None:
         ("proxy", 123),
         ("upstream_connect_timeout_seconds", 1.5),
         ("upstream_receive_timeout_seconds", False),
+        ("mimo_api_key", 123),
+        ("mimo_base_url", None),
+        ("mimo_request_timeout_seconds", False),
+        ("max_reference_audio_bytes", 1.5),
     ],
 )
 def test_invalid_scalar_types_are_rejected(  # type: ignore[misc]
