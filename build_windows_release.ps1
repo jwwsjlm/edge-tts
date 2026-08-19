@@ -6,7 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = [IO.Path]::GetFullPath($PSScriptRoot)
 $ReleaseRoot = [IO.Path]::GetFullPath((Join-Path $Root "releases/windows"))
-$StandaloneExe = Join-Path $ReleaseRoot "edge-tts-windows-x64.exe"
+$ReleaseExe = Join-Path $ReleaseRoot "edge-tts-windows-x64.exe"
+$Archive = Join-Path $ReleaseRoot "edge-tts-windows-x64.zip"
 
 function Stop-PackagedProcess {
     param([string]$ExecutablePath)
@@ -25,7 +26,7 @@ function Stop-PackagedProcess {
 
 Push-Location $Root
 try {
-    Stop-PackagedProcess $StandaloneExe
+    Stop-PackagedProcess $ReleaseExe
     if (Test-Path -LiteralPath $ReleaseRoot) {
         Remove-Item -LiteralPath $ReleaseRoot -Recurse -Force
     }
@@ -40,7 +41,8 @@ try {
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
         throw "PyInstaller output is missing: $source"
     }
-    Copy-Item -LiteralPath $source -Destination $StandaloneExe -Force
+    Copy-Item -LiteralPath $source -Destination $ReleaseExe -Force
+    Copy-Item -LiteralPath (Join-Path $Root "config.example.yaml") -Destination $ReleaseRoot -Force
 
     if (-not $SkipSmokeTest) {
         $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -56,7 +58,7 @@ port: $port
 
         $process = $null
         try {
-            $process = Start-Process -FilePath $StandaloneExe -PassThru -WindowStyle Hidden
+            $process = Start-Process -FilePath $ReleaseExe -PassThru -WindowStyle Hidden
             $healthy = $false
             for ($attempt = 0; $attempt -lt 40; $attempt++) {
                 if ($process.HasExited) {
@@ -80,12 +82,15 @@ port: $port
                 Stop-Process -Id $process.Id -Force
                 $process.WaitForExit()
             }
-            Stop-PackagedProcess $StandaloneExe
+            Stop-PackagedProcess $ReleaseExe
             Remove-Item -LiteralPath $config -Force -ErrorAction SilentlyContinue
         }
     }
 
-    Write-Host "Windows single-file EXE created: $StandaloneExe"
+    Compress-Archive -Path $ReleaseExe, (Join-Path $ReleaseRoot "config.example.yaml") -DestinationPath $Archive -CompressionLevel Optimal
+    Remove-Item -LiteralPath $ReleaseExe -Force
+    Remove-Item -LiteralPath (Join-Path $ReleaseRoot "config.example.yaml") -Force
+    Write-Host "Windows ZIP created: $Archive"
 } finally {
     Pop-Location
 }

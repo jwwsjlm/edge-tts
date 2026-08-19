@@ -1,6 +1,6 @@
 # Windows x64 本地构建与运行
 
-GitHub Release 只提供一个可双击运行的 x64 单文件 EXE。本页用于需要从源码复现产物的维护者。正式发布固定使用 Python 3.14 x64 和当前仓库的 `edge-tts-server.spec`。
+GitHub Release 只提供一个 Windows ZIP，内含单文件 EXE 和配置示例。本页用于需要从源码复现产物的维护者。正式发布固定使用 Python 3.14 x64 和当前仓库的 `edge-tts-server.spec`。
 
 ## 构建要求
 
@@ -32,7 +32,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ## 执行 PyInstaller 构建
 
-推荐使用仓库脚本，它会清理受控产物目录、运行 PyInstaller、启动 EXE 检查 `/health`，最后复制单文件 EXE：
+推荐使用仓库脚本，它会清理受控产物目录、运行 PyInstaller、启动 EXE 检查 `/health`，最后创建只含 EXE 和配置示例的 ZIP：
 
 ```powershell
 .\build_windows_release.ps1 -Python .\.venv\Scripts\python.exe
@@ -51,19 +51,26 @@ MiMo 使用前在 `config.yaml` 设置 `mimo_api_key`。客户端继续使用独
 ## 产物位置
 
 - 单文件 EXE：`dist/edge-tts-server.exe`
-- Release 文件：`releases/windows/edge-tts-windows-x64.exe`
+- Release 文件：`releases/windows/edge-tts-windows-x64.zip`
 
-Release 不再提供 ZIP、批处理文件或额外说明文件。使用时只需要：
+ZIP 内只包含两个文件：
 
-1. 下载 `edge-tts-windows-x64.exe`。
-2. 在同一目录创建或放入 `config.yaml`。
-3. 双击 EXE。
+```text
+edge-tts-windows-x64.exe
+config.example.yaml
+```
+
+使用时只需要：
+
+1. 下载并解压 `edge-tts-windows-x64.zip`。
+2. 将 `config.example.yaml` 复制为 `config.yaml` 并修改 `api_key`。
+3. 双击 `edge-tts-windows-x64.exe`。
 
 没有 `config.yaml` 时，程序会自动创建一份随机 API Key 配置。目标电脑无需安装 Python、Docker 或其他依赖。
 
 ## 手工健康检查
 
-把 `config.example.yaml` 复制为 `config.yaml`，将 `host` 改为 `127.0.0.1` 并替换 Key，然后双击 `edge-tts-windows-x64.exe`。另开 PowerShell：
+把 ZIP 中的 `config.example.yaml` 复制为 `config.yaml`，将 `host` 改为 `127.0.0.1` 并替换 Key，然后双击 `edge-tts-windows-x64.exe`。另开 PowerShell：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5050/health

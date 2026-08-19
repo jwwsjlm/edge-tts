@@ -86,7 +86,7 @@ jobs:
         with:
           name: windows-release
           path: |
-            releases/windows/edge-tts-windows-x64.exe
+            releases/windows/edge-tts-windows-x64.zip
           if-no-files-found: error
 
   python_bundle:
@@ -280,7 +280,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Download Windows ZIP
+      - name: Download Windows release ZIP
         uses: actions/download-artifact@v8
         with:
           name: windows-release
@@ -303,7 +303,7 @@ jobs:
         run: |
           cd release-assets
           sha256sum \
-            edge-tts-windows-x64.exe \
+            edge-tts-windows-x64.zip \
             edge-tts-linux-amd64-python314.tar.gz \
             edge-tts-linux-amd64-docker-offline.tar.gz \
             | sort --key=2 > SHA256SUMS.txt
@@ -327,7 +327,7 @@ jobs:
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "release-assets/edge-tts-windows-x64.exe#Windows x64 | Single-file EXE | Reads config.yaml beside EXE" \
+            "release-assets/edge-tts-windows-x64.zip#Windows x64 | ZIP | EXE + config.example.yaml" \
             "release-assets/edge-tts-linux-amd64-python314.tar.gz#Linux amd64 | Python 3.14 bundle" \
             "release-assets/edge-tts-linux-amd64-docker-offline.tar.gz#Linux amd64 | Docker offline image | 1Panel" \
             "release-assets/SHA256SUMS.txt#SHA-256 checksums" \

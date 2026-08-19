@@ -167,3 +167,4 @@ cython_debug/
 /.worktrees/
 /releases/
 /config.yaml
+/edge-tts-server-source.zip
