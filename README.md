@@ -1,4 +1,4 @@
-# Edge TTS + Xiaomi MiMo 7.5.1
+# Edge TTS + Xiaomi MiMo 7.5.2
 
 本项目提供 Microsoft Edge TTS 与 Xiaomi MiMo V2.5 的统一非流式 HTTP 服务。`POST /v1/tts` 通过 `model` 自由选择 `edge-tts` 或 `mimo-v2-tts`，支持完整 MP3/WAV 返回；MiMo 还支持预置音色、音色设计和音色克隆。原 Edge 调用省略 `model` 时保持兼容。
 
@@ -38,14 +38,14 @@ python run.py --config config.yaml
 
 ### Windows 双击运行
 
-从 GitHub Release 下载单文件 `edge-tts-windows-x64.exe`（内部服务程序名为 `edge-tts-server.exe`），把 `config.yaml` 放在 EXE 同目录后直接双击即可。程序会自动读取同目录配置；没有 `config.yaml` 时会自动创建配置和随机 Key。无需 Python、Docker 或额外依赖。需要完整示例、Swagger 快捷方式和 PowerShell 调用文件时，再下载 `edge-tts-windows-x64-standalone.zip`。
+从 GitHub Release 下载唯一的 Windows 文件 `edge-tts-windows-x64.exe`，把 `config.yaml` 放在 EXE 同目录后直接双击即可。程序会自动读取同目录配置；没有 `config.yaml` 时会自动创建配置和随机 Key。无需 Python、Docker 或额外依赖。
 
 ### Linux Docker
 
 ```bash
 cp config.example.yaml config.yaml
 # 编辑 config.yaml，替换 api_key
-echo "EDGE_TTS_IMAGE_TAG=7.5.1" > .env
+echo "EDGE_TTS_IMAGE_TAG=7.5.2" > .env
 docker compose -f compose.yaml up -d
 curl http://127.0.0.1:5050/health
 ```

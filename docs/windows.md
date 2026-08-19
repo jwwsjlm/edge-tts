@@ -1,6 +1,6 @@
 # Windows x64 本地构建与运行
 
-GitHub Release 已提供可双击运行的 x64 ZIP。本页用于需要从源码复现产物的维护者。正式发布固定使用 Python 3.14 x64 和当前仓库的 `edge-tts-server.spec`。
+GitHub Release 只提供一个可双击运行的 x64 单文件 EXE。本页用于需要从源码复现产物的维护者。正式发布固定使用 Python 3.14 x64 和当前仓库的 `edge-tts-server.spec`。
 
 ## 构建要求
 
@@ -32,7 +32,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ## 执行 PyInstaller 构建
 
-推荐使用仓库脚本，它会清理受控产物目录、运行 PyInstaller、启动 EXE 检查 `/health`，最后创建 ZIP：
+推荐使用仓库脚本，它会清理受控产物目录、运行 PyInstaller、启动 EXE 检查 `/health`，最后复制单文件 EXE：
 
 ```powershell
 .\build_windows_release.ps1 -Python .\.venv\Scripts\python.exe
@@ -51,38 +51,25 @@ MiMo 使用前在 `config.yaml` 设置 `mimo_api_key`。客户端继续使用独
 ## 产物位置
 
 - 单文件 EXE：`dist/edge-tts-server.exe`
-- Release 单文件 EXE：`releases/windows/edge-tts-windows-x64.exe`
-- 可分发目录：`releases/windows/edge-tts-windows-x64-standalone/`
-- 最终压缩包：`releases/windows/edge-tts-windows-x64-standalone.zip`
+- Release 文件：`releases/windows/edge-tts-windows-x64.exe`
 
-ZIP 包含：
+Release 不再提供 ZIP、批处理文件或额外说明文件。使用时只需要：
 
-- `edge-tts-server.exe`（Python 解释器和运行库已封装）
-- `config.example.yaml`
-- `01-start-server.bat`
-- `02-open-swagger.url`
-- `03-call-example.ps1`
-- `README-FIRST.txt`
+1. 下载 `edge-tts-windows-x64.exe`。
+2. 在同一目录创建或放入 `config.yaml`。
+3. 双击 EXE。
 
-如果只想下载一个文件，可直接下载 `edge-tts-windows-x64.exe`。把 `config.yaml` 放在 EXE 同目录后双击即可；如果没有配置文件，程序会自动创建一个随机 `api_key` 配置。该单文件 EXE 不需要 Python、Docker 或安装依赖。
-
-不要把本机生成的 `config.yaml` 或真实 API Key 放进 ZIP。
+没有 `config.yaml` 时，程序会自动创建一份随机 API Key 配置。目标电脑无需安装 Python、Docker 或其他依赖。
 
 ## 手工健康检查
 
-把 `config.example.yaml` 复制为 `config.yaml`，将 `host` 改为 `127.0.0.1` 并替换 Key，然后双击 EXE。另开 PowerShell：
+把 `config.example.yaml` 复制为 `config.yaml`，将 `host` 改为 `127.0.0.1` 并替换 Key，然后双击 `edge-tts-windows-x64.exe`。另开 PowerShell：
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:5050/health
 ```
 
-应返回 `status = ok`。随后执行压缩包中的调用示例：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\03-call-example.ps1 -Text "Windows 构建测试"
-```
-
-确认生成 `speech.mp3` 后关闭服务窗口或按 `Ctrl+C`。构建脚本会自动结束由本次产物启动的 PyInstaller 子进程，避免 EXE 被锁定。
+应返回 `status = ok`。然后使用文档中的 curl、Python 或 PowerShell 示例调用 API。确认生成音频后关闭服务窗口或按 `Ctrl+C`。构建脚本会自动结束本次冒烟测试启动的 EXE，避免文件被锁定。
 
 ## 音色、字幕与代理
 

@@ -4,8 +4,7 @@
 
 ## 先按设备选择下载文件
 
-- **Windows 电脑本地运行**：`edge-tts-windows-x64-standalone.zip`。解压后双击 `01-start-server.bat`；无需 Python、Docker 或额外依赖。
-- **Windows 单文件运行**：`edge-tts-windows-x64.exe`。将 `config.yaml` 放在 EXE 同目录后双击；没有配置文件时会自动创建。
+- **Windows 本地运行**：`edge-tts-windows-x64.exe`。将 `config.yaml` 放在 EXE 同目录后双击；没有配置文件时会自动创建。无需 Python、Docker 或额外依赖。
 - **Linux 服务器，已有 Python 3.14**：`edge-tts-linux-amd64-python314.tar.gz`。这是纯净运行包，依赖位于 `libs/`；不适用于 Windows。
 - **Linux 服务器 / 1Panel / Docker 离线部署**：`edge-tts-linux-amd64-docker-offline.tar.gz`。这是 Docker 离线镜像；不适用于 Windows，不能直接解压运行。
 - **核对下载完整性**：`SHA256SUMS.txt`。
@@ -25,13 +24,12 @@ grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c 
 
 ## Windows 使用
 
-1. 下载并解压 `edge-tts-windows-x64-standalone.zip`。
-2. 双击 `01-start-server.bat`。
-3. 首次启动会在 EXE 同目录生成 `config.yaml` 和随机 API Key。
-4. 双击 `02-open-swagger.url`，或访问 `http://127.0.0.1:5050/docs`。
-5. 在同目录运行 `03-call-example.ps1`，生成 `speech.mp3`。
+1. 下载 `edge-tts-windows-x64.exe`。
+2. 在 EXE 同目录创建 `config.yaml`，或直接双击让程序自动生成。
+3. 双击 EXE，默认监听 `http://127.0.0.1:5050`。
+4. 如果开启 `docs_enabled: true`，访问 `http://127.0.0.1:5050/docs`。
 
-压缩包内已包含 Python 解释器、运行库、配置示例、PowerShell 示例和中文说明。语音合成时仍需访问微软 TTS 上游。
+这是单文件程序，不需要 Python、Docker、ZIP 解压或其他启动脚本。语音合成时仍需访问微软 TTS 上游。
 
 ## Linux Python 纯净运行包
 

@@ -1,6 +1,6 @@
 # Docker 部署 Edge TTS HTTP 服务
 
-发布镜像：`ghcr.io/jwwsjlm/edge-tts:7.5.1`，支持 `linux/amd64` 和 `linux/arm64`。服务器建议固定版本，不要长期依赖 `latest`。离线 Release 资产仅提供 `linux/amd64`。
+发布镜像：`ghcr.io/jwwsjlm/edge-tts:7.5.2`，支持 `linux/amd64` 和 `linux/arm64`。服务器建议固定版本，不要长期依赖 `latest`。离线 Release 资产仅提供 `linux/amd64`。
 
 ## 准备 config.yaml
 
@@ -52,7 +52,7 @@ Docker 内 `host` 必须为 `0.0.0.0`。客户端通过 `X-API-Key` 提交密钥
 固定版本：
 
 ```bash
-printf 'EDGE_TTS_IMAGE_TAG=7.5.1\n' > .env
+printf 'EDGE_TTS_IMAGE_TAG=7.5.2\n' > .env
 docker compose -f compose.yaml pull
 docker compose -f compose.yaml up -d
 ```
@@ -92,7 +92,7 @@ docker compose -f compose.dev.yaml up -d --build
 ## 在线 docker run
 
 ```bash
-docker pull ghcr.io/jwwsjlm/edge-tts:7.5.1
+docker pull ghcr.io/jwwsjlm/edge-tts:7.5.2
 docker run -d \
   --name edge-tts \
   --restart unless-stopped \
@@ -101,7 +101,7 @@ docker run -d \
   --dns 223.5.5.5 --dns 119.29.29.29 \
   -p 5050:5050 \
   --mount type=bind,source="$(pwd)/config.yaml",target=/config/config.yaml,readonly \
-  ghcr.io/jwwsjlm/edge-tts:7.5.1
+ghcr.io/jwwsjlm/edge-tts:7.5.2
 ```
 
 如果 GHCR Package 不是 Public，需要有 `read:packages` 权限的 Token：
@@ -133,7 +133,7 @@ grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c 
 
 ```bash
 gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.1 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.2 >/dev/null
 ```
 
 然后准备 `config.yaml`、`compose.yaml` 和 `.env`，执行：

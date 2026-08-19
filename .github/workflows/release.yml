@@ -86,7 +86,6 @@ jobs:
         with:
           name: windows-release
           path: |
-            releases/windows/edge-tts-windows-x64-standalone.zip
             releases/windows/edge-tts-windows-x64.exe
           if-no-files-found: error
 
@@ -304,7 +303,6 @@ jobs:
         run: |
           cd release-assets
           sha256sum \
-            edge-tts-windows-x64-standalone.zip \
             edge-tts-windows-x64.exe \
             edge-tts-linux-amd64-python314.tar.gz \
             edge-tts-linux-amd64-docker-offline.tar.gz \
@@ -329,7 +327,6 @@ jobs:
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "release-assets/edge-tts-windows-x64-standalone.zip#Windows x64 | Standalone | Double-click 01-start-server.bat" \
             "release-assets/edge-tts-windows-x64.exe#Windows x64 | Single-file EXE | Reads config.yaml beside EXE" \
             "release-assets/edge-tts-linux-amd64-python314.tar.gz#Linux amd64 | Python 3.14 bundle" \
             "release-assets/edge-tts-linux-amd64-docker-offline.tar.gz#Linux amd64 | Docker offline image | 1Panel" \
