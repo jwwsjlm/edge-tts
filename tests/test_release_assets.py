@@ -596,7 +596,7 @@ def test_release_version_is_7_5_3() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.5.3"
+    assert namespace["__version__"] == "7.5.4"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -630,11 +630,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.5.3",
+        "ghcr.io/jwwsjlm/edge-tts:7.5.4",
         "edge-tts-linux-amd64-docker-offline.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.5.3",
+        "EDGE_TTS_IMAGE_TAG=7.5.4",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -727,19 +727,19 @@ def test_current_release_docs_use_python_3_14_and_version_7_5_3() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS + Xiaomi MiMo 7.5.3" in readme
+    assert "# Edge TTS + Xiaomi MiMo 7.5.4" in readme
     assert "推荐 Python 3.14" in readme
     assert "edge-tts-windows-x64.zip" in readme
     assert "edge-tts-windows-x64.exe" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.5.3" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.5.4" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.5.3" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.5.3" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.4" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.5.4" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:NEW_VERSION" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.5.3" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.5.3" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.4" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.5.4" in panel
     assert "Python 3.14" in notes
 
 
