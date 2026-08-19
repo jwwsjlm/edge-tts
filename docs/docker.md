@@ -182,7 +182,7 @@ API Key 不能代替传输加密。公网部署应在 Nginx、Caddy、Traefik、
 
 ```bash
 cp .env .env.rollback
-docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4
+docker pull ghcr.io/jwwsjlm/edge-tts:NEW_VERSION
 docker compose -f compose.yaml up -d
 curl http://127.0.0.1:5050/health
 ```

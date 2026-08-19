@@ -1,6 +1,6 @@
 # Edge TTS + Xiaomi MiMo HTTP Server __VERSION__
 
-本次 Release 提供 Windows x64 独立包、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 离线镜像。服务使用 FastAPI + Uvicorn，`POST /v1/tts` 可通过 `model` 选择 Edge TTS 或 Xiaomi MiMo V2.5，并支持完整 MP3/WAV。MiMo 包含预置音色、音色设计和音色克隆；不是 OpenAI API，也不使用 HTTP 流式传输。
+本次 Release 提供 Windows x64 ZIP、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 Docker 离线镜像。服务使用 FastAPI + Uvicorn，`POST /v1/tts` 可通过 `model` 选择 Edge TTS 或 Xiaomi MiMo V2.5，并支持完整 MP3/WAV。MiMo 包含预置音色、音色设计和音色克隆；不是 OpenAI API，也不使用 HTTP 流式传输。
 
 ## 先按设备选择下载文件
 
@@ -149,7 +149,7 @@ curl -X POST http://127.0.0.1:5050/v1/tts \
   --output speech.wav
 ```
 
-成功响应为 `audio/mpeg`，所有响应含 `X-Request-ID`。并发已满返回 `429 too_many_requests` 和 `Retry-After: 1`；请求、文本、音频超限返回对应 `413`；上游超时返回 `504 upstream_timeout`。
+成功响应按 `response_format` 返回 `audio/mpeg` 或 `audio/wav`，所有响应含 `X-Request-ID`。并发已满返回 `429 too_many_requests` 和 `Retry-After: 1`；请求、文本、音频超限返回对应 `413`；上游超时返回 `504 upstream_timeout`。
 
 如需 Swagger，将 `docs_enabled` 设为 `true` 并重启，然后访问 `/docs` 或 `/openapi.json`。Swagger 使用公共 CDN，API Key 不持久化。
 

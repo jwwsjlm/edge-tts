@@ -302,6 +302,13 @@ jobs:
         shell: bash
         run: |
           cd release-assets
+          expected_assets=$'edge-tts-linux-amd64-docker-offline.tar.gz\nedge-tts-linux-amd64-python314.tar.gz\nedge-tts-windows-x64.zip'
+          actual_assets="$(find . -maxdepth 1 -type f -printf '%f\n' | sort)"
+          if [[ "$actual_assets" != "$(printf '%s\n' "$expected_assets" | sort)" ]]; then
+            echo "Unexpected release files:" >&2
+            printf '%s\n' "$actual_assets" >&2
+            exit 1
+          fi
           sha256sum \
             edge-tts-windows-x64.zip \
             edge-tts-linux-amd64-python314.tar.gz \

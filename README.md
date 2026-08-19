@@ -11,6 +11,19 @@
 - [1Panel 部署](docs/1panel.md)：只维护 Docker-only 部署
 - [Windows 构建与使用](docs/windows.md)：Python 3.14、PyInstaller、双击运行
 
+## Release 文件说明
+
+每个正式 Release 只发布下面四个下载文件：
+
+| 文件 | 适用环境 | 用法 |
+| --- | --- | --- |
+| `edge-tts-windows-x64.zip` | Windows x64 | 解压、复制配置、双击 EXE |
+| `edge-tts-linux-amd64-python314.tar.gz` | Linux amd64 + Python 3.14 | 解压后运行 `python3.14 run.py` |
+| `edge-tts-linux-amd64-docker-offline.tar.gz` | Linux amd64 Docker / 1Panel | 使用 `docker load` 导入 |
+| `SHA256SUMS.txt` | 所有下载文件 | 校验文件完整性 |
+
+Linux arm64 不提供离线下载包，直接拉取 GHCR 多架构镜像。Release 不单独发布裸 EXE、重复 Windows 压缩包、脚本快捷方式或源码备份。
+
 ## 启动服务
 
 ### 源码启动
@@ -109,7 +122,7 @@ ZIP 固定只含 `speech.mp3` 与 `speech.srt`。所有音频和 ZIP 都在服�
 - `http://127.0.0.1:5050/docs`
 - `http://127.0.0.1:5050/openapi.json`
 
-Swagger 只描述本项目的 `/v1/voices`、`/v1/tts`、`/v1/tts/bundle`，不提供 OpenAI 兼容接口。Authorize 使用 `X-API-Key`，不会持久保存授权。
+Swagger 只描述本项目的 `/v1/models`、`/v1/voices`、`/v1/tts`、`/v1/tts/bundle`，不提供 OpenAI 兼容接口。Authorize 使用 `X-API-Key`，不会持久保存授权。
 
 ## config.yaml
 

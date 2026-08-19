@@ -237,6 +237,23 @@ def test_release_asset_labels_make_platform_and_start_action_explicit() -> None:
         assert label in workflow
 
 
+def test_release_workflow_rejects_unexpected_assets() -> None:
+    """The public Release must contain only the documented platform archives."""
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    expected = (
+        "edge-tts-windows-x64.zip",
+        "edge-tts-linux-amd64-python314.tar.gz",
+        "edge-tts-linux-amd64-docker-offline.tar.gz",
+    )
+    for filename in expected:
+        assert filename in workflow
+    assert "Unexpected release files:" in workflow
+    assert "find . -maxdepth 1 -type f" in workflow
+    assert "edge-tts-windows-x64.exe#" not in workflow
+    assert "edge-tts-windows-x64-standalone.zip" not in workflow
+
+
 def test_docker_assets_define_non_root_healthy_service() -> None:
     """The production image should use the shared entry point safely."""
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -265,7 +282,7 @@ def test_docker_assets_define_non_root_healthy_service() -> None:
 
 def test_docker_example_listens_on_all_interfaces() -> None:
     """The container example must be reachable through a published port."""
-    path = ROOT / "packaging/docker/config.example.yaml"
+    path = ROOT / "config.example.yaml"
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
 
     assert config == {
@@ -274,6 +291,12 @@ def test_docker_example_listens_on_all_interfaces() -> None:
         "port": 5050,
         **HARDENED_LIMITS,
     }
+
+
+def test_repository_has_one_canonical_config_example() -> None:
+    """All build and deployment paths should use the root config example."""
+    assert (ROOT / "config.example.yaml").is_file()
+    assert not (ROOT / "packaging/docker/config.example.yaml").exists()
 
 
 def test_docker_guide_covers_configuration_and_operations() -> None:
@@ -713,7 +736,7 @@ def test_current_release_docs_use_python_3_14_and_version_7_5_3() -> None:
     assert "Python 3.12" not in windows
     assert "ghcr.io/jwwsjlm/edge-tts:7.5.3" in docker
     assert "EDGE_TTS_IMAGE_TAG=7.5.3" in docker
-    assert "docker pull ghcr.io/jwwsjlm/edge-tts:7.3.4" in docker
+    assert "docker pull ghcr.io/jwwsjlm/edge-tts:NEW_VERSION" in docker
     assert "ghcr.io/jwwsjlm/edge-tts:7.5.3" in panel
     assert "EDGE_TTS_IMAGE_TAG=7.5.3" in panel
     assert "Python 3.14" in notes
