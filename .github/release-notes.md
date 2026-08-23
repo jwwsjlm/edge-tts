@@ -4,6 +4,8 @@
 
 服务端会复用 Edge/MiMo 上游会话和 DNS 缓存；请求正文、音频块及字幕 ZIP 已针对大文件减少重复复制和无效压缩。接口路径、鉴权和完整缓冲响应行为保持兼容。
 
+FFmpeg 转码现在会边读取边执行输出上限，超限立即回收子进程；Edge WebSocket 会真正应用 `upstream_receive_timeout_seconds`；字段组合错误提供 `fields` 定位，响应可返回音频时长、采样率、声道和位深。源码仓库及 GitHub Source code 压缩包中的 Python 示例支持保留原文的长文本分段、有限重试、哈希校验、顺序合并及段清单；该示例不重复放入 Windows、Linux 纯净运行包或 Docker 镜像。
+
 ## 先按设备选择下载文件
 
 - **Windows 本地运行**：`edge-tts-windows-x64.zip`。解压后将 `config.example.yaml` 复制为 `config.yaml`，修改 Key，再双击 `edge-tts-windows-x64.exe`。无需 Python、Docker 或额外依赖。

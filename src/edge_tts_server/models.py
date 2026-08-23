@@ -73,7 +73,11 @@ class TTSRequest(BaseModel):
         default=None,
         min_length=1,
         max_length=128,
-        description="Optional caller-defined identifier for a long-text segment.",
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+        description=(
+            "Optional response-header-safe ASCII identifier for a long-text segment. "
+            "Allowed characters are letters, digits, dot, underscore, colon and hyphen."
+        ),
     )
     sequence: Optional[StrictInt] = Field(
         default=None,
@@ -94,11 +98,20 @@ class TTSBundleRequest(TTSRequest):
     )
 
 
+class ErrorField(BaseModel):
+    """One safe, machine-readable request validation detail."""
+
+    field: str
+    reason: str
+    allowed: Optional[List[str]] = None
+
+
 class ErrorResponse(BaseModel):
     """Stable error body shared by every public failure response."""
 
     error: str
     message: str
+    fields: Optional[List[ErrorField]] = None
 
 
 class VoiceInfo(BaseModel):

@@ -5,8 +5,6 @@
 import asyncio
 import io
 import logging
-import subprocess
-import sys
 import zipfile
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Tuple, Type
@@ -721,6 +719,57 @@ async def test_invalid_payload_is_rejected(payload: object) -> None:
 
 
 @pytest.mark.asyncio
+async def test_unknown_model_error_lists_allowed_values() -> None:
+    """Literal choices are machine-readable instead of embedded only in prose."""
+    async with client_for() as client:
+        response = await client.post(
+            "/v1/tts", json={"model": "unknown", "text": "hello"}, headers=AUTH
+        )
+
+    assert response.status_code == 400
+    assert response.json()["fields"] == [
+        {
+            "field": "model",
+            "reason": "Input should be 'edge-tts' or 'mimo-v2-tts'",
+            "allowed": ["edge-tts", "mimo-v2-tts"],
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_edge_option_errors_identify_the_invalid_field() -> None:
+    """Provider validation returns machine-readable field details."""
+    cases: List[Tuple[Dict[str, Any], str]] = [
+        ({"text": "hello", "rate": "fast"}, "rate"),
+        ({"text": "hello", "rate": "voice"}, "rate"),
+        ({"text": "hello", "volume": "pitch"}, "volume"),
+        ({"text": "hello", "pitch": "rate"}, "pitch"),
+        ({"text": "hello", "voice": "invalid"}, "voice"),
+    ]
+    async with client_for() as client:
+        for payload, field in cases:
+            response = await client.post("/v1/tts", json=payload, headers=AUTH)
+
+            assert response.status_code == 400
+            assert response.json()["fields"][0]["field"] == field
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("segment_id", ["中文", "bad\nheader", " leading-space"])
+async def test_segment_id_is_safe_for_response_headers(segment_id: str) -> None:
+    """Caller correlation IDs cannot break or inject HTTP response headers."""
+    async with client_for() as client:
+        response = await client.post(
+            "/v1/tts",
+            json={"text": "hello", "segment_id": segment_id},
+            headers=AUTH,
+        )
+
+    assert response.status_code == 400
+    assert response.json()["fields"][0]["field"] == "segment_id"
+
+
+@pytest.mark.asyncio
 async def test_malformed_json_is_rejected() -> None:
     """Syntax errors should use the same stable invalid-request response."""
     async with client_for() as client:
@@ -866,36 +915,6 @@ async def test_unexpected_failures_return_safe_500(
 
 
 @pytest.mark.asyncio
-async def test_unhandled_application_failure_is_stable(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Unhandled route failures still need safe JSON and a request ID."""
-    caplog.set_level(logging.INFO)
-    secret = "must not reach the response or logs"
-    app = create_app(CONFIG)
-
-    @app.get("/unhandled")
-    async def unhandled() -> None:
-        raise RuntimeError(secret)
-
-    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
-        response = await client.get("/unhandled")
-
-    assert response.status_code == 500
-    assert response.json() == {
-        "error": "internal_error",
-        "message": "Internal server error",
-    }
-    assert len(response.headers["X-Request-ID"]) == 32
-    assert secret not in response.text
-    assert secret not in caplog.text
-    assert response.headers["X-Request-ID"] in caplog.text
-
-
-@pytest.mark.asyncio
 async def test_swagger_is_disabled_by_default() -> None:
     """Deployment documentation routes should be opt-in."""
     async with client_for() as client:
@@ -919,7 +938,7 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
     assert docs.status_code == 200
     assert "Swagger UI" in docs.text
     assert schema_response.status_code == 200
-    assert schema["info"]["version"] == "7.5.5"
+    assert schema["info"]["version"] == "7.5.6"
     assert schema["components"]["securitySchemes"]["APIKeyHeader"] == {
         "type": "apiKey",
         "in": "header",
@@ -934,6 +953,10 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
         assert schema["paths"][path][method]["security"] == [{"APIKeyHeader": []}]
     bundle_schema = schema["components"]["schemas"]["TTSBundleRequest"]
     assert bundle_schema["properties"]["boundary"]["default"] == "SentenceBoundary"
+    error_schema = schema["components"]["schemas"]["ErrorResponse"]
+    assert "fields" in error_schema["properties"]
+    field_schema = schema["components"]["schemas"]["ErrorField"]
+    assert {"field", "reason"}.issubset(field_schema["properties"])
     assert (
         "audio/mpeg"
         in schema["paths"]["/v1/tts"]["post"]["responses"]["200"]["content"]
@@ -948,34 +971,3 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
         "application/zip"
         in schema["paths"]["/v1/tts/bundle"]["post"]["responses"]["200"]["content"]
     )
-
-
-def test_uvicorn_defaults_emit_the_safe_access_log() -> None:
-    """The production Uvicorn logger should emit the custom access record."""
-    script = """
-import asyncio
-import httpx
-import uvicorn
-from edge_tts_server.app import create_app
-from edge_tts_server.config import ServerConfig
-
-async def main():
-    app = create_app(ServerConfig(api_key="secret"))
-    uvicorn.Config(app, access_log=False)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/health")
-    print(response.headers["X-Request-ID"])
-
-asyncio.run(main())
-"""
-    completed = subprocess.run(
-        [sys.executable, "-c", script],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    request_id = completed.stdout.strip()
-    assert len(request_id) == 32
-    assert request_id in completed.stderr

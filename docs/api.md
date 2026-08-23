@@ -77,7 +77,7 @@ curl "http://127.0.0.1:5050/v1/voices?model=edge-tts&locale=zh-CN&language=zh&ge
 | `mimo_mode` | string | 否 | `preset` | `preset`、`design`、`clone` |
 | `voice_description` | string/null | 否 | `null` | MiMo design 模式必填 |
 | `reference_audio` | string/null | 否 | `null` | MiMo clone 模式必填，WAV/MP3 Base64 data URL |
-| `segment_id` | string/null | 否 | `null` | 可选的分段标识，最多 128 个字符 |
+| `segment_id` | string/null | 否 | `null` | 可选的分段标识，最多 128 个 ASCII 字符；仅允许字母、数字、`.`、`_`、`:`、`-` |
 | `sequence` | integer/null | 否 | `null` | 可选的 1-based 分段序号，用于客户端按顺序合并 |
 
 未知字段、错误类型和无效参数返回 `400 invalid_request`。成功为完整 `audio/mpeg` 或 `audio/wav`。Edge 原生 MP3、MiMo 原生 WAV；请求另一种格式时使用发行包内置 FFmpeg 转换。
@@ -87,9 +87,14 @@ curl "http://127.0.0.1:5050/v1/voices?model=edge-tts&locale=zh-CN&language=zh&ge
 ```http
 X-Request-ID: 服务端请求 ID
 X-Text-SHA256: 输入文本 UTF-8 的 SHA-256
+X-Text-Length: 输入文本字符数
 X-Audio-Bytes: 返回音频字节数
 X-Segment-ID: 请求提供时原样返回
 X-Sequence: 请求提供时原样返回
+X-Audio-Duration-Ms: 可解析时返回音频时长
+X-Audio-Sample-Rate-Hz: 可解析时返回采样率
+X-Audio-Channels: 可解析时返回声道数
+X-Audio-Bits-Per-Sample: WAV 可解析时返回采样位深
 X-Quality-Status: pass 或 fail
 ```
 
@@ -101,6 +106,19 @@ X-Recommended-Max-Text-Length: 600
 ```
 
 推荐在 500～600 字左右切分恐怖故事等长文本，并用 `segment_id`、`sequence` 和 `X-Text-SHA256` 记录每段。服务端不会自动拆分或合并音频。
+
+源码仓库（以及 GitHub 自动提供的 Source code 压缩包）内置 Python 示例，可完成分段、有限重试、哈希与序号校验、按 `sequence` 排序合并，并生成旁路清单。该客户端示例不包含在 Windows、Linux 纯净运行包或 Docker 镜像中：
+
+```bash
+python examples/multi_model_tts.py \
+  --api-key YOUR_KEY \
+  --model mimo-v2-tts --mimo-mode preset --voice 白桦 \
+  --text-file story.txt --segment-size 600 \
+  --segment-id-prefix story-001 --retries 3 \
+  --response-format wav --output story.wav
+```
+
+输出除 `story.wav` 外还包含 `story.wav.segments.json`，记录每段的 `sequence`、文本哈希、请求 ID、字节数和服务端可解析的时长。单段失败只重试该段；超过有限重试次数后立即退出，不会把缺失段静默合并。
 
 ### Edge 参数如何调节
 
@@ -404,7 +422,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:5050/v1/tts/bundle" `
 
 | HTTP | `error` | 含义 |
 | ---: | --- | --- |
-| 400 | `invalid_request` | JSON、筛选、字段或原版 TTS 参数无效 |
+| 400 | `invalid_request` | JSON、筛选、字段或原版 TTS 参数无效；字段错误附带 `fields` |
 | 401 | `unauthorized` | 缺少或错误 Key |
 | 404 | `not_found` | 路由不存在 |
 | 405 | `method_not_allowed` | HTTP 方法不支持 |

@@ -27,7 +27,12 @@ from edge_tts.submaker import SubMaker
 from edge_tts.typing import Voice
 from edge_tts.version import __version__
 
-from .audio import AudioConversionError, ConvertedAudioTooLarge, convert_audio
+from .audio import (
+    AudioConversionError,
+    ConvertedAudioTooLarge,
+    convert_audio,
+    inspect_audio,
+)
 from .config import ServerConfig
 from .mimo import (
     MIMO_PRESET_VOICES,
@@ -64,6 +69,24 @@ class MiMoClientLike(Protocol):
         """Return complete WAV audio."""
 
 
+class RequestFieldError(ValueError):
+    """Validated client error with safe field-level details."""
+
+    def __init__(self, message: str, fields: List[Dict[str, Any]]) -> None:
+        super().__init__(message)
+        self.fields = fields
+
+
+def _field_detail(
+    field: str, reason: str, allowed: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Build one secret-free field error entry."""
+    detail: Dict[str, Any] = {"field": field, "reason": reason}
+    if allowed is not None:
+        detail["allowed"] = allowed
+    return detail
+
+
 _ACCESS_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.access")
 _APP_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.app")
 _PROTECTED_ROUTES = frozenset(
@@ -74,6 +97,12 @@ _PROTECTED_ROUTES = frozenset(
         ("/v1/models", "GET"),
     }
 )
+_FIELD_ALLOWED_VALUES = {
+    "model": ["edge-tts", "mimo-v2-tts"],
+    "response_format": ["mp3", "wav"],
+    "mimo_mode": ["preset", "design", "clone"],
+    "boundary": ["WordBoundary", "SentenceBoundary"],
+}
 _SYNTHESIS_ERROR_RESPONSES: Dict[int | str, Dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
@@ -135,13 +164,13 @@ def _scope_error(scope: Scope, status: int, code: str, message: str) -> JSONResp
     return JSONResponse(status_code=status, content={"error": code, "message": message})
 
 
-def _audio_headers(
-    payload: TTSRequest, audio: bytes, audio_format: str, config: ServerConfig
+def _request_metadata_headers(
+    payload: TTSRequest, config: ServerConfig
 ) -> Dict[str, str]:
-    """Build safe correlation and basic quality metadata headers."""
+    """Build safe request correlation headers for success and failure responses."""
     headers = {
         "X-Text-SHA256": hashlib.sha256(payload.text.encode("utf-8")).hexdigest(),
-        "X-Audio-Bytes": str(len(audio)),
+        "X-Text-Length": str(len(payload.text)),
     }
     if payload.segment_id is not None:
         headers["X-Segment-ID"] = payload.segment_id
@@ -155,17 +184,38 @@ def _audio_headers(
         headers["X-Recommended-Max-Text-Length"] = str(
             config.mimo_recommended_max_text_length
         )
-    wav_valid = len(audio) >= 44 and audio[:4] == b"RIFF" and audio[8:12] == b"WAVE"
-    mp3_valid = audio.startswith(b"ID3") or (
-        len(audio) >= 2 and audio[0] == 0xFF and (audio[1] & 0xE0) == 0xE0
-    )
-    if (audio_format == "wav" and not wav_valid) or (
-        audio_format == "mp3" and not mp3_valid
-    ):
-        headers["X-Quality-Status"] = "fail"
-    else:
-        headers["X-Quality-Status"] = "pass"
     return headers
+
+
+def _audio_headers(
+    payload: TTSRequest,
+    audio: bytes,
+    audio_format: str,
+    config: ServerConfig,
+    duration_ms: Optional[int] = None,
+) -> Dict[str, str]:
+    """Build safe correlation and basic quality metadata headers."""
+    headers = _request_metadata_headers(payload, config)
+    headers["X-Audio-Bytes"] = str(len(audio))
+    audio_info = inspect_audio(audio, audio_format, duration_ms)
+    if audio_info.duration_ms is not None:
+        headers["X-Audio-Duration-Ms"] = str(audio_info.duration_ms)
+    if audio_info.sample_rate_hz is not None:
+        headers["X-Audio-Sample-Rate-Hz"] = str(audio_info.sample_rate_hz)
+    if audio_info.channels is not None:
+        headers["X-Audio-Channels"] = str(audio_info.channels)
+    if audio_info.bits_per_sample is not None:
+        headers["X-Audio-Bits-Per-Sample"] = str(audio_info.bits_per_sample)
+    headers["X-Quality-Status"] = "pass" if audio_info.valid else "fail"
+    return headers
+
+
+def _with_request_metadata(
+    response: JSONResponse, payload: TTSRequest, config: ServerConfig
+) -> JSONResponse:
+    """Make failed segments as easy to correlate as successful audio."""
+    response.headers.update(_request_metadata_headers(payload, config))
+    return response
 
 
 class RequestContextMiddleware:
@@ -466,7 +516,7 @@ async def _collect_synthesis(
     *,
     include_subtitles: bool,
     session_factory: Optional[SessionFactory] = None,
-) -> tuple[bytes, str]:
+) -> tuple[bytes, str, Optional[int]]:
     """Collect one upstream synthesis into bounded audio and optional SRT."""
     communicator_options: Dict[str, Any] = {
         "rate": options["rate"],
@@ -484,6 +534,7 @@ async def _collect_synthesis(
     )
     audio_chunks: List[bytes] = []
     audio_size = 0
+    duration_ms: Optional[int] = None
     submaker = SubMaker() if include_subtitles else None
     async for chunk in communicator.stream():
         if chunk["type"] == "audio":
@@ -493,10 +544,15 @@ async def _collect_synthesis(
                 raise AudioTooLarge
             audio_chunks.append(data)
             continue
+        offset = chunk.get("offset")
+        duration = chunk.get("duration")
+        if isinstance(offset, (int, float)) and isinstance(duration, (int, float)):
+            boundary_end_ms = max(0, round((offset + duration) / 10_000))
+            duration_ms = max(duration_ms or 0, boundary_end_ms)
         if submaker is not None:
             submaker.feed(chunk)
     subtitles = submaker.get_srt() if submaker is not None else ""
-    return b"".join(audio_chunks), subtitles
+    return b"".join(audio_chunks), subtitles, duration_ms
 
 
 def _validated_options(
@@ -521,6 +577,165 @@ def _validated_options(
     }
 
 
+def _validate_edge_request(
+    payload: TTSRequest,
+    boundary: Literal["WordBoundary", "SentenceBoundary"],
+) -> Dict[str, str]:
+    """Validate Edge-specific fields and return normalized synthesis options."""
+    fields: List[Dict[str, Any]] = []
+    if payload.mimo_mode != "preset":
+        fields.append(
+            _field_detail("mimo_mode", "is only supported by mimo-v2-tts", ["preset"])
+        )
+    for field in ("voice_description", "reference_audio"):
+        if getattr(payload, field) is not None:
+            fields.append(_field_detail(field, "is not supported by edge-tts"))
+    if fields:
+        raise RequestFieldError(
+            "MiMo-only fields are not supported by edge-tts", fields
+        )
+
+    for field, pattern in (
+        ("rate", r"^[+-]\d+%$"),
+        ("volume", r"^[+-]\d+%$"),
+        ("pitch", r"^[+-]\d+Hz$"),
+    ):
+        try:
+            TTSConfig.validate_string_param(field, getattr(payload, field), pattern)
+        except (TypeError, ValueError) as exc:
+            raise RequestFieldError(str(exc), [_field_detail(field, str(exc))]) from exc
+    try:
+        return _validated_options(payload, boundary)
+    except (TypeError, ValueError) as exc:
+        raise RequestFieldError(str(exc), [_field_detail("voice", str(exc))]) from exc
+
+
+def _validate_mimo_common_request(payload: TTSRequest, config: ServerConfig) -> None:
+    """Validate MiMo constraints shared by every synthesis mode."""
+    if len(payload.text) > min(config.max_text_length, 3000):
+        raise RequestFieldError(
+            "MiMo text exceeds the 3000 character limit",
+            [_field_detail("text", "must contain at most 3000 characters")],
+        )
+    unsupported_controls = [
+        field
+        for field, default in (
+            ("rate", "+0%"),
+            ("volume", "+0%"),
+            ("pitch", "+0Hz"),
+        )
+        if getattr(payload, field) != default
+    ]
+    if unsupported_controls:
+        raise RequestFieldError(
+            "rate, volume and pitch are not supported by mimo-v2-tts",
+            [
+                _field_detail(field, "is not supported by mimo-v2-tts")
+                for field in unsupported_controls
+            ],
+        )
+
+
+def _validate_mimo_preset_request(payload: TTSRequest) -> MiMoSynthesisRequest:
+    """Validate and build a MiMo preset-voice request."""
+    fields = [
+        _field_detail(field, "is not accepted in preset mode")
+        for field in ("voice_description", "reference_audio")
+        if getattr(payload, field) is not None
+    ]
+    if fields:
+        raise RequestFieldError(
+            "preset mode does not accept design or clone fields", fields
+        )
+    voice = payload.voice if "voice" in payload.model_fields_set else "mimo_default"
+    try:
+        validate_preset_voice(voice)
+    except ValueError as exc:
+        raise RequestFieldError(
+            str(exc),
+            [
+                _field_detail(
+                    "voice",
+                    str(exc),
+                    [preset.voice_id for preset in MIMO_PRESET_VOICES],
+                )
+            ],
+        ) from exc
+    return MiMoSynthesisRequest(
+        text=payload.text,
+        mode="preset",
+        voice=voice,
+    )
+
+
+def _validate_mimo_design_request(payload: TTSRequest) -> MiMoSynthesisRequest:
+    """Validate and build a MiMo voice-design request."""
+    if payload.reference_audio is not None:
+        raise RequestFieldError(
+            "design mode does not accept reference_audio",
+            [_field_detail("reference_audio", "is not accepted in design mode")],
+        )
+    if payload.voice_description is None or not payload.voice_description.strip():
+        raise RequestFieldError(
+            "voice_description is required for MiMo design mode",
+            [_field_detail("voice_description", "is required in design mode")],
+        )
+    return MiMoSynthesisRequest(
+        text=payload.text,
+        mode="design",
+        voice_description=payload.voice_description,
+    )
+
+
+def _validate_mimo_clone_request(
+    payload: TTSRequest, config: ServerConfig
+) -> MiMoSynthesisRequest:
+    """Validate and build a MiMo voice-cloning request."""
+    if payload.voice_description is not None:
+        raise RequestFieldError(
+            "clone mode does not accept voice_description",
+            [_field_detail("voice_description", "is not accepted in clone mode")],
+        )
+    if payload.reference_audio is None:
+        raise RequestFieldError(
+            "reference_audio is required for MiMo clone mode",
+            [_field_detail("reference_audio", "is required in clone mode")],
+        )
+    try:
+        reference_audio = normalize_reference_audio(
+            payload.reference_audio,
+            config.max_reference_audio_bytes,
+        )
+    except ReferenceAudioTooLarge:
+        raise
+    except ValueError as exc:
+        raise RequestFieldError(
+            str(exc), [_field_detail("reference_audio", str(exc))]
+        ) from exc
+    return MiMoSynthesisRequest(
+        text=payload.text,
+        mode="clone",
+        reference_audio=reference_audio,
+    )
+
+
+def _validate_mimo_request(
+    payload: TTSRequest, config: ServerConfig
+) -> MiMoSynthesisRequest:
+    """Validate common MiMo rules and dispatch to the selected mode."""
+    _validate_mimo_common_request(payload, config)
+    if payload.mimo_mode == "preset":
+        return _validate_mimo_preset_request(payload)
+    if "voice" in payload.model_fields_set:
+        raise RequestFieldError(
+            "voice is only supported by MiMo preset mode",
+            [_field_detail("voice", "is only supported in preset mode")],
+        )
+    if payload.mimo_mode == "design":
+        return _validate_mimo_design_request(payload)
+    return _validate_mimo_clone_request(payload, config)
+
+
 def _validate_provider_request(
     payload: TTSRequest,
     config: ServerConfig,
@@ -528,55 +743,8 @@ def _validate_provider_request(
 ) -> tuple[Optional[Dict[str, str]], Optional[MiMoSynthesisRequest]]:
     """Validate model-specific options without silently ignoring any field."""
     if payload.model == "edge-tts":
-        if payload.mimo_mode != "preset":
-            raise ValueError("mimo_mode is only supported by mimo-v2-tts")
-        if payload.voice_description is not None or payload.reference_audio is not None:
-            raise ValueError("MiMo-only fields are not supported by edge-tts")
-        return _validated_options(payload, boundary), None
-
-    if len(payload.text) > min(config.max_text_length, 3000):
-        raise ValueError("MiMo text exceeds the 3000 character limit")
-    if payload.rate != "+0%" or payload.volume != "+0%" or payload.pitch != "+0Hz":
-        raise ValueError("rate, volume and pitch are not supported by mimo-v2-tts")
-
-    explicitly_set = payload.model_fields_set
-    if payload.mimo_mode == "preset":
-        if payload.voice_description is not None or payload.reference_audio is not None:
-            raise ValueError("preset mode does not accept design or clone fields")
-        voice = payload.voice if "voice" in explicitly_set else "mimo_default"
-        validate_preset_voice(voice)
-        return None, MiMoSynthesisRequest(
-            text=payload.text,
-            mode="preset",
-            voice=voice,
-        )
-
-    if "voice" in explicitly_set:
-        raise ValueError("voice is only supported by MiMo preset mode")
-    if payload.mimo_mode == "design":
-        if payload.reference_audio is not None:
-            raise ValueError("design mode does not accept reference_audio")
-        if payload.voice_description is None or not payload.voice_description.strip():
-            raise ValueError("voice_description is required for MiMo design mode")
-        return None, MiMoSynthesisRequest(
-            text=payload.text,
-            mode="design",
-            voice_description=payload.voice_description,
-        )
-
-    if payload.voice_description is not None:
-        raise ValueError("clone mode does not accept voice_description")
-    if payload.reference_audio is None:
-        raise ValueError("reference_audio is required for MiMo clone mode")
-    reference_audio = normalize_reference_audio(
-        payload.reference_audio,
-        config.max_reference_audio_bytes,
-    )
-    return None, MiMoSynthesisRequest(
-        text=payload.text,
-        mode="clone",
-        reference_audio=reference_audio,
-    )
+        return _validate_edge_request(payload, boundary), None
+    return None, _validate_mimo_request(payload, config)
 
 
 def create_app(
@@ -663,10 +831,11 @@ def create_app(
             location = [str(part) for part in item.get("loc", []) if part != "body"]
             field = ".".join(location) or "body"
             fields.append(
-                {
-                    "field": field,
-                    "reason": str(item.get("msg", "invalid value")),
-                }
+                _field_detail(
+                    field,
+                    str(item.get("msg", "invalid value")),
+                    _FIELD_ALLOWED_VALUES.get(field),
+                )
             )
         return _field_error(
             400,
@@ -813,7 +982,7 @@ def create_app(
         boundary: Literal["WordBoundary", "SentenceBoundary"],
         *,
         include_subtitles: bool,
-    ) -> tuple[bytes, str, str] | JSONResponse:
+    ) -> tuple[bytes, str, str, Optional[int]] | JSONResponse:
         """Apply the shared validation, limits and error contract."""
         if not payload.text.strip():
             return _error(400, "invalid_request", "text must not be blank", request)
@@ -857,6 +1026,8 @@ def create_app(
                 "Reference audio exceeds configured limit",
                 request,
             )
+        except RequestFieldError as exc:
+            return _field_error(400, "invalid_request", str(exc), request, exc.fields)
         except (TypeError, ValueError) as exc:
             return _error(400, "invalid_request", str(exc), request)
 
@@ -874,9 +1045,9 @@ def create_app(
         try:
             try:
 
-                async def generate() -> tuple[bytes, str, str]:
+                async def generate() -> tuple[bytes, str, str, Optional[int]]:
                     if edge_options is not None:
-                        audio, subtitles = await _collect_synthesis(
+                        audio, subtitles, duration_ms = await _collect_synthesis(
                             edge_options,
                             communicator_factory,
                             config,
@@ -890,6 +1061,7 @@ def create_app(
                         audio = await mimo_client.synthesize(mimo_options)
                         subtitles = ""
                         source_format = "wav"
+                        duration_ms = inspect_audio(audio, source_format).duration_ms
                         if len(audio) > config.max_audio_bytes:
                             raise AudioTooLarge
                     if (
@@ -903,7 +1075,7 @@ def create_app(
                             config.max_audio_bytes,
                         )
                         source_format = payload.response_format
-                    return audio, subtitles, source_format
+                    return audio, subtitles, source_format, duration_ms
 
                 return await asyncio.wait_for(
                     generate(),
@@ -1011,10 +1183,12 @@ def create_app(
             include_subtitles=False,
         )
         if isinstance(result, JSONResponse):
-            return result
-        audio, _subtitles, audio_format = result
+            return _with_request_metadata(result, payload, config)
+        audio, _subtitles, audio_format, duration_ms = result
         media_type = "audio/mpeg" if audio_format == "mp3" else "audio/wav"
-        headers = _audio_headers(payload, audio, audio_format, config)
+        headers = _audio_headers(
+            payload, audio, audio_format, config, duration_ms=duration_ms
+        )
         headers["Content-Disposition"] = f'inline; filename="speech.{audio_format}"'
         return Response(
             content=audio,
@@ -1045,8 +1219,8 @@ def create_app(
             include_subtitles=True,
         )
         if isinstance(result, JSONResponse):
-            return result
-        audio, subtitles, _audio_format = result
+            return _with_request_metadata(result, payload, config)
+        audio, subtitles, _audio_format, duration_ms = result
         bundle = io.BytesIO()
         with zipfile.ZipFile(bundle, mode="w") as archive:
             archive.writestr("speech.mp3", audio, compress_type=zipfile.ZIP_STORED)
@@ -1055,7 +1229,7 @@ def create_app(
                 subtitles.encode("utf-8"),
                 compress_type=zipfile.ZIP_DEFLATED,
             )
-        headers = _audio_headers(payload, audio, "mp3", config)
+        headers = _audio_headers(payload, audio, "mp3", config, duration_ms=duration_ms)
         headers["Content-Disposition"] = 'attachment; filename="speech-bundle.zip"'
         return Response(
             content=bundle.getvalue(),

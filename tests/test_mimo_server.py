@@ -3,6 +3,9 @@
 # pylint: disable=too-few-public-methods
 
 import base64
+import hashlib
+import io
+import wave
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, cast
 
@@ -33,6 +36,17 @@ CONFIG = ServerConfig(
 )
 AUTH = {"X-API-Key": CONFIG.api_key}
 VALID_WAV = b"RIFF\x04\x00\x00\x00WAVE"
+
+
+def playable_wav() -> bytes:
+    """Return a valid 10 ms, 24 kHz, mono, 16-bit PCM WAV."""
+    output = io.BytesIO()
+    with wave.open(output, "wb") as stream:
+        stream.setnchannels(1)  # pylint: disable=no-member
+        stream.setsampwidth(2)  # pylint: disable=no-member
+        stream.setframerate(24000)  # pylint: disable=no-member
+        stream.writeframes(b"\x00\x00" * 240)  # pylint: disable=no-member
+    return output.getvalue()
 
 
 def test_reference_audio_reuses_validated_base64_and_rejects_early(
@@ -226,10 +240,59 @@ async def test_synthesis_returns_segment_and_text_integrity_headers() -> None:
     assert response.status_code == 200
     assert response.headers["X-Segment-ID"] == "story-001"
     assert response.headers["X-Sequence"] == "1"
-    assert response.headers["X-Text-SHA256"]
+    assert (
+        response.headers["X-Text-SHA256"]
+        == hashlib.sha256(("x" * 601).encode()).hexdigest()
+    )
+    assert response.headers["X-Text-Length"] == "601"
     assert response.headers["X-Text-Length-Warning"] == "recommended_limit_exceeded"
     assert response.headers["X-Recommended-Max-Text-Length"] == "600"
     assert response.headers["X-Quality-Status"] == "fail"
+
+
+@pytest.mark.asyncio
+async def test_playable_wav_exposes_duration_and_pcm_metadata() -> None:
+    """MiMo WAV quality checks report real duration, format and channel metadata."""
+    async with client_for(FakeMiMoClient(playable_wav())) as client:
+        response = await client.post(
+            "/v1/tts",
+            headers=AUTH,
+            json={
+                "model": "mimo-v2-tts",
+                "text": "你好",
+                "response_format": "wav",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["X-Quality-Status"] == "pass"
+    assert response.headers["X-Audio-Duration-Ms"] == "10"
+    assert response.headers["X-Audio-Sample-Rate-Hz"] == "24000"
+    assert response.headers["X-Audio-Channels"] == "1"
+    assert response.headers["X-Audio-Bits-Per-Sample"] == "16"
+
+
+@pytest.mark.asyncio
+async def test_failed_and_duplicate_segments_remain_correlatable() -> None:
+    """Retries retain stable input identity while each attempt gets a request ID."""
+    payload: Dict[str, Any] = {
+        "model": "mimo-v2-tts",
+        "text": "同一段",
+        "voice": "unknown",
+        "segment_id": "story-000001",
+        "sequence": 1,
+    }
+    async with client_for(FakeMiMoClient()) as client:
+        first = await client.post("/v1/tts", headers=AUTH, json=payload)
+        second = await client.post("/v1/tts", headers=AUTH, json=payload)
+
+    assert first.status_code == second.status_code == 400
+    expected_hash = hashlib.sha256(payload["text"].encode()).hexdigest()
+    for response in (first, second):
+        assert response.headers["X-Segment-ID"] == "story-000001"
+        assert response.headers["X-Sequence"] == "1"
+        assert response.headers["X-Text-SHA256"] == expected_hash
+    assert first.headers["X-Request-ID"] != second.headers["X-Request-ID"]
 
 
 @pytest.mark.asyncio
@@ -303,41 +366,48 @@ async def test_mimo_design_and_clone_fields_are_dispatched() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "payload",
+    ("payload", "field"),
     [
-        {"model": "mimo-v2-tts", "text": "x", "voice": "unknown"},
-        {
-            "model": "mimo-v2-tts",
-            "text": "x",
-            "rate": "+10%",
-        },
-        {
-            "model": "mimo-v2-tts",
-            "mimo_mode": "design",
-            "text": "x",
-        },
-        {
-            "model": "mimo-v2-tts",
-            "mimo_mode": "clone",
-            "text": "x",
-            "reference_audio": "not-a-data-url",
-        },
-        {
-            "model": "mimo-v2-tts",
-            "mimo_mode": "clone",
-            "text": "x",
-            "reference_audio": "data:audio/wav;base64,bm90LXdhdg==",
-        },
-        {
-            "model": "mimo-v2-tts",
-            "mimo_mode": "clone",
-            "text": "x",
-            "reference_audio": "data:audio/mpeg;base64,bm90LW1wMw==",
-        },
+        ({"model": "mimo-v2-tts", "text": "x", "voice": "unknown"}, "voice"),
+        (
+            {"model": "mimo-v2-tts", "text": "x", "rate": "+10%"},
+            "rate",
+        ),
+        (
+            {"model": "mimo-v2-tts", "mimo_mode": "design", "text": "x"},
+            "voice_description",
+        ),
+        (
+            {
+                "model": "mimo-v2-tts",
+                "mimo_mode": "clone",
+                "text": "x",
+                "reference_audio": "not-a-data-url",
+            },
+            "reference_audio",
+        ),
+        (
+            {
+                "model": "mimo-v2-tts",
+                "mimo_mode": "clone",
+                "text": "x",
+                "reference_audio": "data:audio/wav;base64,bm90LXdhdg==",
+            },
+            "reference_audio",
+        ),
+        (
+            {
+                "model": "mimo-v2-tts",
+                "mimo_mode": "clone",
+                "text": "x",
+                "reference_audio": "data:audio/mpeg;base64,bm90LW1wMw==",
+            },
+            "reference_audio",
+        ),
     ],
 )
 async def test_invalid_mimo_combinations_return_stable_400(  # type: ignore[misc]
-    payload: Dict[str, Any],
+    payload: Dict[str, Any], field: str
 ) -> None:
     """Unsupported or incomplete MiMo options must never be ignored."""
     async with client_for(FakeMiMoClient()) as client:
@@ -345,6 +415,7 @@ async def test_invalid_mimo_combinations_return_stable_400(  # type: ignore[misc
 
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_request"
+    assert response.json()["fields"][0]["field"] == field
 
 
 @pytest.mark.asyncio

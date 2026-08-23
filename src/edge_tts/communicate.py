@@ -11,6 +11,7 @@ from contextlib import AsyncExitStack, nullcontext
 from io import TextIOWrapper
 from queue import Queue
 from typing import (
+    Any,
     AsyncGenerator,
     ContextManager,
     Dict,
@@ -45,6 +46,20 @@ from .exceptions import (
 from .typing import CommunicateState, TTSChunk
 
 _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+_WEBSOCKET_CLOSE_TIMEOUT = 10.0
+
+
+def _websocket_timeout_options(receive_timeout: float) -> Dict[str, Any]:
+    """Build receive-timeout options compatible with aiohttp 3.8 through 3.x."""
+    client_ws_timeout = getattr(aiohttp, "ClientWSTimeout", None)
+    if client_ws_timeout is None:
+        return {"receive_timeout": receive_timeout}
+    return {
+        "timeout": client_ws_timeout(
+            ws_receive=receive_timeout,
+            ws_close=_WEBSOCKET_CLOSE_TIMEOUT,
+        )
+    }
 
 
 def get_headers_and_data(
@@ -368,7 +383,6 @@ class Communicate:
             sock_connect=connect_timeout,
             sock_read=receive_timeout,
         )
-
         # Validate the connector parameter.
         if connector is not None and not isinstance(connector, aiohttp.BaseConnector):
             raise TypeError("connector must be aiohttp.BaseConnector")
@@ -434,6 +448,8 @@ class Communicate:
         self, stack: AsyncExitStack
     ) -> aiohttp.ClientWebSocketResponse:
         """Open a websocket with either an owned or caller-provided session."""
+        receive_timeout = self.session_timeout.sock_read
+        assert receive_timeout is not None
         session = self.session
         if session is None:
             session = await stack.enter_async_context(
@@ -452,6 +468,7 @@ class Communicate:
                 proxy=self.proxy,
                 headers=DRM.headers_with_muid(WSS_HEADERS),
                 ssl=_SSL_CTX,
+                **_websocket_timeout_options(receive_timeout),
             )
         )
 
