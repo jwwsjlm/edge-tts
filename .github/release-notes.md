@@ -2,6 +2,8 @@
 
 本次 Release 提供 Windows x64 ZIP、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 Docker 离线镜像。服务使用 FastAPI + Uvicorn，`POST /v1/tts` 可通过 `model` 选择 Edge TTS 或 Xiaomi MiMo V2.5，并支持完整 MP3/WAV。MiMo 包含预置音色、音色设计和音色克隆；不是 OpenAI API，也不使用 HTTP 流式传输。
 
+服务端会复用 Edge/MiMo 上游会话和 DNS 缓存；请求正文、音频块及字幕 ZIP 已针对大文件减少重复复制和无效压缩。接口路径、鉴权和完整缓冲响应行为保持兼容。
+
 ## 先按设备选择下载文件
 
 - **Windows 本地运行**：`edge-tts-windows-x64.zip`。解压后将 `config.example.yaml` 复制为 `config.yaml`，修改 Key，再双击 `edge-tts-windows-x64.exe`。无需 Python、Docker 或额外依赖。

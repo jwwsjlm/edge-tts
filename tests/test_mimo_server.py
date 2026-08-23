@@ -20,7 +20,9 @@ from edge_tts_server.mimo import (
     MiMoRateLimitError,
     MiMoResponseError,
     MiMoSynthesisRequest,
+    ReferenceAudioTooLarge,
     _payload,
+    normalize_reference_audio,
 )
 
 CONFIG = ServerConfig(
@@ -31,6 +33,24 @@ CONFIG = ServerConfig(
 )
 AUTH = {"X-API-Key": CONFIG.api_key}
 VALID_WAV = b"RIFF\x04\x00\x00\x00WAVE"
+
+
+def test_reference_audio_reuses_validated_base64_and_rejects_early(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clone validation avoids a second Base64 encode and rejects obvious excess early."""
+    encoded = base64.b64encode(VALID_WAV).decode("ascii")
+    assert (
+        normalize_reference_audio(f"data:audio/x-wav;base64,{encoded}", len(VALID_WAV))
+        == f"data:audio/wav;base64,{encoded}"
+    )
+
+    def unexpected_decode(*_args: Any, **_kwargs: Any) -> bytes:
+        raise AssertionError("oversized Base64 should be rejected before decoding")
+
+    monkeypatch.setattr(base64, "b64decode", unexpected_decode)
+    with pytest.raises(ReferenceAudioTooLarge):
+        normalize_reference_audio("data:audio/wav;base64," + ("A" * 100), 4)
 
 
 async def unused_voices(**_kwargs: Any) -> List[Voice]:

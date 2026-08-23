@@ -7,7 +7,7 @@ import json
 import ssl
 import time
 import uuid
-from contextlib import nullcontext
+from contextlib import AsyncExitStack, nullcontext
 from io import TextIOWrapper
 from queue import Queue
 from typing import (
@@ -334,6 +334,7 @@ class Communicate:
         pitch: str = "+0Hz",
         boundary: Literal["WordBoundary", "SentenceBoundary"] = "SentenceBoundary",
         connector: Optional[aiohttp.BaseConnector] = None,
+        session: Optional[aiohttp.ClientSession] = None,
         proxy: Optional[str] = None,
         connect_timeout: Optional[int] = 10,
         receive_timeout: Optional[int] = 60,
@@ -371,7 +372,14 @@ class Communicate:
         # Validate the connector parameter.
         if connector is not None and not isinstance(connector, aiohttp.BaseConnector):
             raise TypeError("connector must be aiohttp.BaseConnector")
+        if session is not None and not isinstance(session, aiohttp.ClientSession):
+            raise TypeError("session must be aiohttp.ClientSession")
+        if connector is not None and session is not None:
+            raise ValueError("connector and session cannot be used together")
+        if session is not None and session.closed:
+            raise ValueError("session must not be closed")
         self.connector: Optional[aiohttp.BaseConnector] = connector
+        self.session: Optional[aiohttp.ClientSession] = session
 
         # Store current state of TTS.
         self.state: CommunicateState = {
@@ -422,6 +430,31 @@ class Communicate:
         )
         self.state["chunk_audio_bytes"] = 0
 
+    async def __open_websocket(
+        self, stack: AsyncExitStack
+    ) -> aiohttp.ClientWebSocketResponse:
+        """Open a websocket with either an owned or caller-provided session."""
+        session = self.session
+        if session is None:
+            session = await stack.enter_async_context(
+                aiohttp.ClientSession(
+                    connector=self.connector,
+                    trust_env=True,
+                    timeout=self.session_timeout,
+                )
+            )
+        return await stack.enter_async_context(
+            session.ws_connect(
+                f"{WSS_URL}&ConnectionId={connect_id()}"
+                f"&Sec-MS-GEC={DRM.generate_sec_ms_gec()}"
+                f"&Sec-MS-GEC-Version={SEC_MS_GEC_VERSION}",
+                compress=15,
+                proxy=self.proxy,
+                headers=DRM.headers_with_muid(WSS_HEADERS),
+                ssl=_SSL_CTX,
+            )
+        )
+
     async def __stream(self) -> AsyncGenerator[TTSChunk, None]:
         async def send_command_request() -> None:
             """Sends the command request to the service."""
@@ -458,19 +491,8 @@ class Communicate:
         audio_was_received = False
 
         # Create a new connection to the service.
-        async with aiohttp.ClientSession(
-            connector=self.connector,
-            trust_env=True,
-            timeout=self.session_timeout,
-        ) as session, session.ws_connect(
-            f"{WSS_URL}&ConnectionId={connect_id()}"
-            f"&Sec-MS-GEC={DRM.generate_sec_ms_gec()}"
-            f"&Sec-MS-GEC-Version={SEC_MS_GEC_VERSION}",
-            compress=15,
-            proxy=self.proxy,
-            headers=DRM.headers_with_muid(WSS_HEADERS),
-            ssl=_SSL_CTX,
-        ) as websocket:
+        async with AsyncExitStack() as stack:
+            websocket = await self.__open_websocket(stack)
             await send_command_request()
 
             await send_ssml_request()

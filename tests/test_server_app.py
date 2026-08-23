@@ -541,6 +541,8 @@ async def test_bundle_returns_one_synthesis_as_mp3_and_srt(boundary: str) -> Non
     assert FakeCommunicator.options[-1]["boundary"] == boundary
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert archive.namelist() == ["speech.mp3", "speech.srt"]
+        assert archive.getinfo("speech.mp3").compress_type == zipfile.ZIP_STORED
+        assert archive.getinfo("speech.srt").compress_type == zipfile.ZIP_DEFLATED
         assert archive.read("speech.mp3") == b"ID3bundleaudio"
         subtitles = archive.read("speech.srt").decode("utf-8")
     assert "00:00:00,000 --> 00:00:00,100" in subtitles
@@ -917,7 +919,7 @@ async def test_swagger_schema_documents_api_key_when_enabled() -> None:
     assert docs.status_code == 200
     assert "Swagger UI" in docs.text
     assert schema_response.status_code == 200
-    assert schema["info"]["version"] == "7.5.4"
+    assert schema["info"]["version"] == "7.5.5"
     assert schema["components"]["securitySchemes"]["APIKeyHeader"] == {
         "type": "apiKey",
         "in": "header",

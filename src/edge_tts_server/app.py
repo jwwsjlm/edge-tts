@@ -54,6 +54,7 @@ from .models import (
 CommunicatorFactory = Callable[..., Any]
 VoicesFactory = Callable[..., Awaitable[List[Voice]]]
 AudioConverter = Callable[[bytes, str, str, int], Awaitable[bytes]]
+SessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
 
 
 class MiMoClientLike(Protocol):
@@ -65,6 +66,14 @@ class MiMoClientLike(Protocol):
 
 _ACCESS_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.access")
 _APP_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.app")
+_PROTECTED_ROUTES = frozenset(
+    {
+        ("/v1/tts", "POST"),
+        ("/v1/tts/bundle", "POST"),
+        ("/v1/voices", "GET"),
+        ("/v1/models", "GET"),
+    }
+)
 _SYNTHESIS_ERROR_RESPONSES: Dict[int | str, Dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
@@ -187,24 +196,25 @@ class RequestContextMiddleware:
         try:
             await self.app(scope, receive, send_with_request_id)
         finally:
-            duration_ms = (time.perf_counter() - started) * 1000
-            error_type = scope.get("state", {}).get("error_type", "-")
-            _ACCESS_LOGGER.info(
-                "%s",
-                json.dumps(
-                    {
-                        "duration_ms": round(duration_ms, 2),
-                        "error": error_type,
-                        "method": scope.get("method", "-"),
-                        "path": scope.get("path", "-"),
-                        "request_id": request_id,
-                        "status": status,
-                    },
-                    ensure_ascii=True,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ),
-            )
+            if _ACCESS_LOGGER.isEnabledFor(logging.INFO):
+                duration_ms = (time.perf_counter() - started) * 1000
+                error_type = scope.get("state", {}).get("error_type", "-")
+                _ACCESS_LOGGER.info(
+                    "%s",
+                    json.dumps(
+                        {
+                            "duration_ms": round(duration_ms, 2),
+                            "error": error_type,
+                            "method": scope.get("method", "-"),
+                            "path": scope.get("path", "-"),
+                            "request_id": request_id,
+                            "status": status,
+                        },
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                )
 
 
 class SafeErrorMiddleware:
@@ -251,24 +261,17 @@ class APIKeyMiddleware:
 
     def __init__(self, app: ASGIApp, api_key: str) -> None:
         self.app = app
-        self.api_key = api_key
+        self.api_key = api_key.encode("utf-8")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        protected = (scope.get("path"), scope.get("method")) in {
-            ("/v1/tts", "POST"),
-            ("/v1/tts/bundle", "POST"),
-            ("/v1/voices", "GET"),
-            ("/v1/models", "GET"),
-        }
+        protected = (scope.get("path"), scope.get("method")) in _PROTECTED_ROUTES
         if scope["type"] == "http" and protected:
-            supplied = ""
+            supplied = b""
             for name, value in scope.get("headers", []):
                 if name.lower() == b"x-api-key":
-                    supplied = value.decode("utf-8", errors="replace")
+                    supplied = value
                     break
-            if not hmac.compare_digest(
-                supplied.encode("utf-8"), self.api_key.encode("utf-8")
-            ):
+            if not hmac.compare_digest(supplied, self.api_key):
                 response = _scope_error(
                     scope,
                     401,
@@ -311,7 +314,8 @@ class BodyLimitMiddleware:
                 except ValueError:
                     pass
 
-        body = bytearray()
+        chunks: List[bytes] = []
+        body_size = 0
         while True:
             message = await receive()
             if message["type"] == "http.disconnect":
@@ -319,7 +323,8 @@ class BodyLimitMiddleware:
             if message["type"] != "http.request":
                 continue
             chunk = message.get("body", b"")
-            if len(body) + len(chunk) > self.max_bytes:
+            body_size += len(chunk)
+            if body_size > self.max_bytes:
                 response = _scope_error(
                     scope,
                     413,
@@ -328,7 +333,8 @@ class BodyLimitMiddleware:
                 )
                 await response(scope, receive, send)
                 return
-            body.extend(chunk)
+            if chunk:
+                chunks.append(chunk)
             if not message.get("more_body", False):
                 break
 
@@ -339,7 +345,11 @@ class BodyLimitMiddleware:
             if replayed:
                 return {"type": "http.disconnect"}
             replayed = True
-            return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return {
+                "type": "http.request",
+                "body": b"".join(chunks),
+                "more_body": False,
+            }
 
         await self.app(scope, replay_receive, send)
 
@@ -455,32 +465,38 @@ async def _collect_synthesis(
     config: ServerConfig,
     *,
     include_subtitles: bool,
+    session_factory: Optional[SessionFactory] = None,
 ) -> tuple[bytes, str]:
     """Collect one upstream synthesis into bounded audio and optional SRT."""
+    communicator_options: Dict[str, Any] = {
+        "rate": options["rate"],
+        "volume": options["volume"],
+        "pitch": options["pitch"],
+        "boundary": options["boundary"],
+        "proxy": config.proxy,
+        "connect_timeout": config.upstream_connect_timeout_seconds,
+        "receive_timeout": config.upstream_receive_timeout_seconds,
+    }
+    if session_factory is not None:
+        communicator_options["session"] = await session_factory()
     communicator = communicator_factory(
-        options["text"],
-        options["voice"],
-        rate=options["rate"],
-        volume=options["volume"],
-        pitch=options["pitch"],
-        boundary=options["boundary"],
-        proxy=config.proxy,
-        connect_timeout=config.upstream_connect_timeout_seconds,
-        receive_timeout=config.upstream_receive_timeout_seconds,
+        options["text"], options["voice"], **communicator_options
     )
-    audio = bytearray()
+    audio_chunks: List[bytes] = []
+    audio_size = 0
     submaker = SubMaker() if include_subtitles else None
     async for chunk in communicator.stream():
         if chunk["type"] == "audio":
             data = chunk["data"]
-            if len(audio) + len(data) > config.max_audio_bytes:
+            audio_size += len(data)
+            if audio_size > config.max_audio_bytes:
                 raise AudioTooLarge
-            audio.extend(data)
+            audio_chunks.append(data)
             continue
         if submaker is not None:
             submaker.feed(chunk)
     subtitles = submaker.get_srt() if submaker is not None else ""
-    return bytes(audio), subtitles
+    return b"".join(audio_chunks), subtitles
 
 
 def _validated_options(
@@ -593,6 +609,38 @@ def create_app(
         request_timeout_seconds=config.request_timeout_seconds,
     )
     owned_mimo_client: Optional[MiMoClient] = None
+    edge_session: Optional[aiohttp.ClientSession] = None
+
+    async def get_edge_session() -> aiohttp.ClientSession:
+        """Create one DNS-caching session per server process and reuse it."""
+        nonlocal edge_session
+        if edge_session is None or edge_session.closed:
+            connector = aiohttp.TCPConnector(
+                limit=config.max_concurrent_requests,
+                limit_per_host=config.max_concurrent_requests,
+                ttl_dns_cache=300,
+            )
+            edge_session = aiohttp.ClientSession(
+                connector=connector,
+                trust_env=True,
+                timeout=aiohttp.ClientTimeout(
+                    total=None,
+                    connect=None,
+                    sock_connect=config.upstream_connect_timeout_seconds,
+                    sock_read=config.upstream_receive_timeout_seconds,
+                ),
+            )
+        return edge_session
+
+    async def close_edge_session() -> None:
+        if edge_session is not None and not edge_session.closed:
+            await edge_session.close()
+
+    edge_session_factory = (
+        get_edge_session if communicator_factory is Communicate else None
+    )
+    if edge_session_factory is not None:
+        app.router.add_event_handler("shutdown", close_edge_session)
     if mimo_client is None and config.mimo_api_key is not None:
         owned_mimo_client = MiMoClient(
             config.mimo_api_key,
@@ -833,6 +881,7 @@ def create_app(
                             communicator_factory,
                             config,
                             include_subtitles=include_subtitles,
+                            session_factory=edge_session_factory,
                         )
                         source_format = "mp3"
                     else:
@@ -999,11 +1048,13 @@ def create_app(
             return result
         audio, subtitles, _audio_format = result
         bundle = io.BytesIO()
-        with zipfile.ZipFile(
-            bundle, mode="w", compression=zipfile.ZIP_DEFLATED
-        ) as archive:
-            archive.writestr("speech.mp3", audio)
-            archive.writestr("speech.srt", subtitles.encode("utf-8"))
+        with zipfile.ZipFile(bundle, mode="w") as archive:
+            archive.writestr("speech.mp3", audio, compress_type=zipfile.ZIP_STORED)
+            archive.writestr(
+                "speech.srt",
+                subtitles.encode("utf-8"),
+                compress_type=zipfile.ZIP_DEFLATED,
+            )
         headers = _audio_headers(payload, audio, "mp3", config)
         headers["Content-Disposition"] = 'attachment; filename="speech-bundle.zip"'
         return Response(

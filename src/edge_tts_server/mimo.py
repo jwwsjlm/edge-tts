@@ -90,8 +90,11 @@ def normalize_reference_audio(value: str, max_bytes: int) -> str:
     match = _REFERENCE_AUDIO.fullmatch(value)
     if match is None:
         raise ValueError("reference_audio must be a WAV/MP3 Base64 data URL")
+    encoded = match.group("data")
+    if len(encoded) > ((max_bytes + 2) // 3) * 4:
+        raise ReferenceAudioTooLarge("reference_audio exceeds configured limit")
     try:
-        decoded = base64.b64decode(match.group("data"), validate=True)
+        decoded = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as exc:
         raise ValueError("reference_audio contains invalid Base64") from exc
     if not decoded:
@@ -109,7 +112,6 @@ def normalize_reference_audio(value: str, max_bytes: int) -> str:
     ):
         raise ValueError("reference_audio is not a valid MP3 file")
     media_type = "audio/wav" if is_wav else "audio/mpeg"
-    encoded = base64.b64encode(decoded).decode("ascii")
     return f"data:{media_type};base64,{encoded}"
 
 
@@ -158,8 +160,9 @@ class MiMoClient:
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(timeout=self._timeout)
+        if self._session is not None and not self._session.closed:
+            return self._session
+        self._session = aiohttp.ClientSession(timeout=self._timeout)
         return self._session
 
     async def synthesize(self, options: MiMoSynthesisRequest) -> bytes:
