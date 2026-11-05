@@ -102,6 +102,7 @@ docker run -d \
   --dns 223.5.5.5 --dns 119.29.29.29 \
   -p 5050:5050 \
   --mount type=bind,source="$(pwd)/config.yaml",target=/config/config.yaml,readonly \
+  --mount type=volume,source=tts-data,target=/config/data \
 ghcr.io/jwwsjlm/edge-tts:7.6.0
 ```
 
