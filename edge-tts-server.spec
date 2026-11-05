@@ -10,7 +10,9 @@ analysis = Analysis(
     [str(ROOT / "src" / "edge_tts_server" / "__main__.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    datas=collect_data_files("imageio_ffmpeg"),
+    datas=collect_data_files("imageio_ffmpeg") + [
+        (str(ROOT / "src/edge_tts_server/static"), "edge_tts_server/static")
+    ],
     hiddenimports=(
         collect_submodules("edge_tts_server")
         + collect_submodules("fastapi")

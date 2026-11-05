@@ -61,6 +61,10 @@ runpy.run_path(entry, run_name='__main__')
                         f"http://127.0.0.1:{port}/health", timeout=1
                     ) as response:
                         assert json.load(response) == {"status": "ok"}
+                    with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/", timeout=2
+                    ) as page:
+                        assert b'<div id="app">' in page.read()
                     print("Isolated bundle smoke test passed")
                     return
                 except (urllib.error.URLError, TimeoutError):

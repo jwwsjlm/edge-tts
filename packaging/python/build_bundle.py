@@ -18,6 +18,10 @@ ALLOWED_TOP_LEVEL = {"libs", "config.example.yaml", "run.py", "LICENSE"}
 
 def _install_runtime(libs: Path) -> None:
     """Install the project and all runtime dependencies into the vendored tree."""
+    if not (ROOT / "src/edge_tts_server/static/index.html").is_file():
+        raise RuntimeError(
+            "Build the frontend first: cd web && npm ci && npm run build"
+        )
     subprocess.run(
         [
             sys.executable,

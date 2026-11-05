@@ -17,3 +17,6 @@ tests
 release-assets
 config.yaml
 edge-tts-server-source.zip
+data
+node_modules
+web/node_modules

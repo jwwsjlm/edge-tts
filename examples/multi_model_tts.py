@@ -17,8 +17,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import imageio_ffmpeg  # type: ignore[import-untyped]
 
+from edge_tts_server.text import split_text
+
 _RETRYABLE_HTTP_STATUS = frozenset({429, 500, 502, 503, 504})
-_SPLIT_MARKS = ("\n", "。", "！", "？", ". ", "! ", "? ", "；", "; ", "，", ", ")
 _SEGMENT_PREFIX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
 
 
@@ -29,31 +30,6 @@ def reference_data_url(path: Path) -> str:
         raise ValueError("Reference audio must be a WAV or MP3 file")
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{media_type};base64,{encoded}"
-
-
-def split_text(text: str, max_chars: int) -> List[str]:
-    """Split text deterministically, preferring natural boundaries near the limit."""
-    if not text.strip():
-        raise ValueError("Text must not be blank")
-    if max_chars <= 0 or len(text) <= max_chars:
-        return [text]
-
-    segments: List[str] = []
-    remaining = text
-    while len(remaining) > max_chars:
-        minimum = max(1, max_chars // 2)
-        candidates = [
-            candidate + len(mark)
-            for mark in _SPLIT_MARKS
-            if (candidate := remaining.rfind(mark, 0, max_chars)) >= 0
-            and candidate + len(mark) >= minimum
-        ]
-        end = max(candidates, default=max_chars)
-        segments.append(remaining[:end])
-        remaining = remaining[end:]
-    if remaining:
-        segments.append(remaining)
-    return segments
 
 
 def _valid_audio(audio: bytes, audio_format: str) -> bool:

@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
@@ -42,6 +43,10 @@ def main(
     config_path = resolve_config_path(args.config)
     existed = config_path.exists()
     config = load_or_create_config(config_path)
+    data_path = Path(config.data_dir).expanduser()
+    if not data_path.is_absolute():
+        data_path = config_path.parent / data_path
+    config = replace(config, data_dir=str(data_path.resolve()))
 
     print(f"Config: {config_path}")
     if not existed:

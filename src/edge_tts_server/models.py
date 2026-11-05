@@ -79,6 +79,14 @@ class TTSRequest(BaseModel):
             "Allowed characters are letters, digits, dot, underscore, colon and hyphen."
         ),
     )
+    instructions: Optional[StrictStr] = Field(
+        default=None,
+        max_length=4000,
+        description="MiMo-only natural-language speaking style instructions.",
+    )
+    speaking_rate: Literal["very_slow", "slow", "normal", "fast", "very_fast"] = (
+        "normal"
+    )
     sequence: Optional[StrictInt] = Field(
         default=None,
         ge=1,

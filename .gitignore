@@ -169,3 +169,10 @@ cython_debug/
 /release-assets/
 /config.yaml
 /edge-tts-server-source.zip
+/data/
+node_modules/
+/web/dist/
+/src/edge_tts_server/static/
+/.impeccable/review/
+/.impeccable/mocks/
+/.impeccable/hook.cache.json

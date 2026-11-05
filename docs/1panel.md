@@ -52,8 +52,8 @@ openssl rand -base64 32
 
 ```bash
 cd /opt/edge-tts
-echo 'EDGE_TTS_IMAGE_TAG=7.5.7' > .env
-docker pull ghcr.io/jwwsjlm/edge-tts:7.5.7
+echo 'EDGE_TTS_IMAGE_TAG=7.6.0' > .env
+docker pull ghcr.io/jwwsjlm/edge-tts:7.6.0
 docker compose -f compose.yaml up -d
 ```
 
@@ -83,13 +83,13 @@ grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c 
 
 ```bash
 gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.7 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.6.0 >/dev/null
 ```
 
 创建 `.env` 并启动：
 
 ```bash
-echo 'EDGE_TTS_IMAGE_TAG=7.5.7' > .env
+echo 'EDGE_TTS_IMAGE_TAG=7.6.0' > .env
 docker compose -f compose.yaml up -d
 ```
 
@@ -186,4 +186,8 @@ unzip -l speech-bundle.zip
 ZIP 应只列出 `speech.mp3`、`speech.srt`。服务器访问微软上游需要代理时，在挂载的 `config.yaml` 设置 `proxy`，同时可调整 `upstream_connect_timeout_seconds` 和 `upstream_receive_timeout_seconds`；修改后用 Compose 重建容器。代理 URL 及凭据不得复制到面板公开日志或客户端参数。
 
 配置 `mimo_api_key` 后，`POST /v1/tts` 的 `model` 可选择 `mimo-v2-tts`；MiMo 的 `preset`、`design` 和 `clone` 模式见 API 文档。
+
+# 工作台与数据
+
+7.6.0 启动后访问站点根路径使用工作台，`/admin` 使用配置中的 `api_key` 管理渠道。请在 1Panel 持久化 `/config/data`，保持配置文件只读；Compose 已提供该数据卷。升级前备份配置及数据目录，不删除数据卷。详见 [工作台文档](workspace.md)。
 

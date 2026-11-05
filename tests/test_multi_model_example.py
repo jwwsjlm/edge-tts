@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from edge_tts_server.text import split_text
 from examples import multi_model_tts
 
 
@@ -30,7 +31,7 @@ def _wave_bytes(value: int = 1000, frames: int = 240) -> bytes:
 def test_split_text_prefers_boundaries_and_respects_limit() -> None:
     """Long stories are deterministically divided into bounded non-empty segments."""
     text = "第一句很长。第二句也很长。第三句结束。"
-    segments = multi_model_tts.split_text(text, 9)
+    segments = split_text(text, 9)
 
     assert all(0 < len(segment) <= 9 for segment in segments)
     assert "".join(segments) == text
@@ -48,7 +49,7 @@ def test_split_text_preserves_whitespace_and_hard_boundaries(
     text: str, max_chars: int
 ) -> None:
     """Splitting preserves every character and never exceeds a positive limit."""
-    segments = multi_model_tts.split_text(text, max_chars)
+    segments = split_text(text, max_chars)
 
     assert "".join(segments) == text
     assert all(0 < len(segment) <= max_chars for segment in segments)
@@ -58,7 +59,7 @@ def test_split_text_preserves_whitespace_and_hard_boundaries(
 def test_split_text_rejects_blank_input(text: str) -> None:
     """Empty and whitespace-only source text cannot produce valid requests."""
     with pytest.raises(ValueError, match="must not be blank"):
-        multi_model_tts.split_text(text, 10)
+        split_text(text, 10)
 
 
 def test_merge_segments_uses_the_supplied_sequence_order(tmp_path: Path) -> None:

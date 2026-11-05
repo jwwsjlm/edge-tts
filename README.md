@@ -1,4 +1,8 @@
-# Edge TTS + Xiaomi MiMo 7.5.7
+# Edge TTS + Xiaomi MiMo 7.6.0
+
+打开 `http://你的IP:5050/` 即可使用免费的语音工作台：支持渠道切换、音色与语速设置、后台长文生成、在线试听、MP3/WAV 和 Edge 字幕下载。普通用户无需登录，不需要会员或域名绑定。
+
+`/admin` 使用 `config.yaml` 中的 `api_key` 管理 Edge/MiMo 渠道，设置即时生效并保存在 SQLite。生成结果默认保留 7 天。用法、新接口和数据目录见 [工作台文档](docs/workspace.md)。
 
 本项目提供 Microsoft Edge TTS 与 Xiaomi MiMo V2.5 的统一非流式 HTTP 服务。`POST /v1/tts` 通过 `model` 自由选择 `edge-tts` 或 `mimo-v2-tts`，支持完整 MP3/WAV 返回；MiMo 还支持预置音色、音色设计和音色克隆。原 Edge 调用省略 `model` 时保持兼容。
 
@@ -39,13 +43,17 @@ Linux arm64 不提供离线下载包，直接拉取 GHCR 多架构镜像。Relea
 
 ### 源码启动
 
-需要 Python 3.10 或更高版本，推荐 Python 3.14：
+需要 Python 3.10 或更高版本，推荐 Python 3.14；源码构建页面需要 Node.js 24。Release 运行包已附带页面，无需 Node.js：
 
 ```bash
 python -m venv .venv
 # Linux/macOS: source .venv/bin/activate
 # Windows: .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
+cd web
+npm ci
+npm run build
+cd ..
 cp config.example.yaml config.yaml
 python -m edge_tts_server --config config.yaml
 ```
@@ -69,7 +77,7 @@ python run.py --config config.yaml
 ```bash
 cp config.example.yaml config.yaml
 # 编辑 config.yaml，替换 api_key
-echo "EDGE_TTS_IMAGE_TAG=7.5.7" > .env
+echo "EDGE_TTS_IMAGE_TAG=7.6.0" > .env
 docker compose -f compose.yaml up -d
 curl http://127.0.0.1:5050/health
 ```

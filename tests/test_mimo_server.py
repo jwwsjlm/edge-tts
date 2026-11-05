@@ -296,10 +296,10 @@ async def test_failed_and_duplicate_segments_remain_correlatable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_root_route_returns_service_discovery() -> None:
-    """Operators can discover health, docs and model routes from the root."""
+async def test_service_route_returns_service_discovery() -> None:
+    """Operators can discover health, docs and model routes alongside the UI."""
     async with client_for(FakeMiMoClient()) as client:
-        response = await client.get("/")
+        response = await client.get("/api/service")
 
     assert response.status_code == 200
     assert response.json()["service"] == "Edge TTS + MiMo HTTP Server"

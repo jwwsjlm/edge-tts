@@ -30,6 +30,10 @@ _ALLOWED_KEYS = frozenset(
         "mimo_request_timeout_seconds",
         "max_reference_audio_bytes",
         "mimo_recommended_max_text_length",
+        "data_dir",
+        "job_retention_days",
+        "max_pending_jobs",
+        "max_storage_bytes",
     )
 )
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -61,6 +65,10 @@ class ServerConfig:  # pylint: disable=too-many-instance-attributes
     mimo_request_timeout_seconds: int = 120
     max_reference_audio_bytes: int = 10485760
     mimo_recommended_max_text_length: int = 600
+    data_dir: str = "data"
+    job_retention_days: int = 7
+    max_pending_jobs: int = 100
+    max_storage_bytes: int = 10737418240
 
 
 def _valid_host(host: str) -> bool:
@@ -120,6 +128,12 @@ def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-loca
     mimo_request_timeout_seconds = raw.get("mimo_request_timeout_seconds", 120)
     max_reference_audio_bytes = raw.get("max_reference_audio_bytes", 10485760)
     mimo_recommended_max_text_length = raw.get("mimo_recommended_max_text_length", 600)
+    data_dir = raw.get("data_dir", "data")
+    job_retention_days = raw.get("job_retention_days", 7)
+    max_pending_jobs = raw.get("max_pending_jobs", 100)
+    max_storage_bytes = raw.get("max_storage_bytes", 10737418240)
+    if not isinstance(data_dir, str) or not data_dir.strip():
+        raise ConfigError("data_dir must be a non-empty path")
 
     if not isinstance(api_key, str) or not api_key.strip():
         raise ConfigError("api_key must be a non-empty string")
@@ -139,6 +153,9 @@ def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-loca
         "mimo_request_timeout_seconds": mimo_request_timeout_seconds,
         "max_reference_audio_bytes": max_reference_audio_bytes,
         "mimo_recommended_max_text_length": mimo_recommended_max_text_length,
+        "job_retention_days": job_retention_days,
+        "max_pending_jobs": max_pending_jobs,
+        "max_storage_bytes": max_storage_bytes,
     }
     for name, value in limits.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -173,6 +190,10 @@ def _validate_config(raw: Any) -> ServerConfig:  # pylint: disable=too-many-loca
         mimo_request_timeout_seconds=mimo_request_timeout_seconds,
         max_reference_audio_bytes=max_reference_audio_bytes,
         mimo_recommended_max_text_length=mimo_recommended_max_text_length,
+        data_dir=data_dir,
+        job_retention_days=job_retention_days,
+        max_pending_jobs=max_pending_jobs,
+        max_storage_bytes=max_storage_bytes,
     )
 
 

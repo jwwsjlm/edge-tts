@@ -60,6 +60,10 @@ class MiMoResponseError(MiMoError):
     """Raised when MiMo returns a malformed or unsuccessful response."""
 
 
+class MiMoTransientError(MiMoResponseError):
+    """A temporary upstream server failure that background jobs may retry."""
+
+
 class MiMoAudioTooLarge(MiMoError):
     """Raised before returning a decoded response that exceeds its limit."""
 
@@ -77,6 +81,7 @@ class MiMoSynthesisRequest:
     voice: Optional[str] = None
     voice_description: Optional[str] = None
     reference_audio: Optional[str] = None
+    instructions: Optional[str] = None
 
 
 def validate_preset_voice(voice: str) -> None:
@@ -91,7 +96,7 @@ def normalize_reference_audio(value: str, max_bytes: int) -> str:
     if match is None:
         raise ValueError("reference_audio must be a WAV/MP3 Base64 data URL")
     encoded = match.group("data")
-    if len(encoded) > ((max_bytes + 2) // 3) * 4:
+    if len(encoded) > min(((max_bytes + 2) // 3) * 4, 10 * 1024 * 1024):
         raise ReferenceAudioTooLarge("reference_audio exceeds configured limit")
     try:
         decoded = base64.b64decode(encoded, validate=True)
@@ -130,6 +135,11 @@ def _payload(options: MiMoSynthesisRequest) -> Dict[str, Any]:
     else:
         assert options.reference_audio is not None
         audio["voice"] = options.reference_audio
+
+    if options.instructions:
+        instruction = "\n".join(
+            part for part in (instruction, options.instructions) if part
+        )
 
     return {
         "model": upstream_model,
@@ -183,6 +193,8 @@ class MiMoClient:
                 raise MiMoRateLimitError(response.headers.get("Retry-After"))
             if response.status < 200 or response.status >= 300:
                 await response.read()
+                if response.status >= 500:
+                    raise MiMoTransientError("MiMo upstream server failure")
                 raise MiMoResponseError(f"MiMo upstream HTTP {response.status}")
             try:
                 body = await response.json(content_type=None)

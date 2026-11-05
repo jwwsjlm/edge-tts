@@ -11,7 +11,8 @@ import logging
 import time
 import uuid
 import zipfile
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, List, Literal, Optional
+from urllib.parse import urlsplit
 
 import aiohttp
 from fastapi import FastAPI, Query, Request, Security
@@ -22,9 +23,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from edge_tts import Communicate, exceptions, list_voices
-from edge_tts.data_classes import TTSConfig
-from edge_tts.submaker import SubMaker
-from edge_tts.typing import Voice
 from edge_tts.version import __version__
 
 from .audio import (
@@ -35,16 +33,11 @@ from .audio import (
 )
 from .config import ServerConfig
 from .mimo import (
-    MIMO_PRESET_VOICES,
     MIMO_PUBLIC_MODEL,
     MiMoAudioTooLarge,
-    MiMoClient,
     MiMoError,
     MiMoRateLimitError,
-    MiMoSynthesisRequest,
     ReferenceAudioTooLarge,
-    normalize_reference_audio,
-    validate_preset_voice,
 )
 from .models import (
     ErrorResponse,
@@ -52,40 +45,21 @@ from .models import (
     ModelsResponse,
     TTSBundleRequest,
     TTSRequest,
-    VoiceInfo,
     VoicesResponse,
 )
-
-CommunicatorFactory = Callable[..., Any]
-VoicesFactory = Callable[..., Awaitable[List[Voice]]]
-AudioConverter = Callable[[bytes, str, str, int], Awaitable[bytes]]
-SessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
-
-
-class MiMoClientLike(Protocol):
-    """Minimal injectable MiMo client contract used by the application."""
-
-    async def synthesize(self, options: MiMoSynthesisRequest) -> bytes:
-        """Return complete WAV audio."""
-
-
-class RequestFieldError(ValueError):
-    """Validated client error with safe field-level details."""
-
-    def __init__(self, message: str, fields: List[Dict[str, Any]]) -> None:
-        super().__init__(message)
-        self.fields = fields
-
-
-def _field_detail(
-    field: str, reason: str, allowed: Optional[List[str]] = None
-) -> Dict[str, Any]:
-    """Build one secret-free field error entry."""
-    detail: Dict[str, Any] = {"field": field, "reason": reason}
-    if allowed is not None:
-        detail["allowed"] = allowed
-    return detail
-
+from .synthesis import (
+    AudioConverter,
+    AudioTooLarge,
+    CommunicatorFactory,
+    MiMoClientLike,
+    RequestFieldError,
+    SynthesisEngine,
+    VoicesFactory,
+    _field_detail,
+    _mimo_voices,
+    _validate_provider_request,
+)
+from .web import mount_workspace
 
 _ACCESS_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.access")
 _APP_LOGGER = logging.getLogger("uvicorn.error.edge_tts_server.app")
@@ -314,7 +288,10 @@ class APIKeyMiddleware:
         self.api_key = api_key.encode("utf-8")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        protected = (scope.get("path"), scope.get("method")) in _PROTECTED_ROUTES
+        protected = (
+            scope.get("path"),
+            scope.get("method"),
+        ) in _PROTECTED_ROUTES or scope.get("path", "").startswith("/api/admin/")
         if scope["type"] == "http" and protected:
             supplied = b""
             for name, value in scope.get("headers", []):
@@ -343,8 +320,11 @@ class BodyLimitMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if not (
             scope["type"] == "http"
-            and scope.get("path") in {"/v1/tts", "/v1/tts/bundle"}
-            and scope.get("method") == "POST"
+            and (
+                scope.get("path") in {"/v1/tts", "/v1/tts/bundle"}
+                or scope.get("path", "").startswith("/api/")
+            )
+            and scope.get("method") in {"POST", "PUT", "PATCH", "DELETE"}
         ):
             await self.app(scope, receive, send)
             return
@@ -404,347 +384,45 @@ class BodyLimitMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-class AudioTooLarge(Exception):
-    """Raised when buffered synthesis output crosses its configured limit."""
+class WorkspaceGuardMiddleware:
+    """Require same-origin browser writes and prevent caching private API metadata."""
 
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-def _normalize_voice(voice: Voice) -> VoiceInfo:
-    """Map upstream title-cased fields to the stable HTTP schema."""
-    voice_tag = voice["VoiceTag"]
-    return VoiceInfo(
-        name=voice["ShortName"],
-        internal_name=voice["Name"],
-        friendly_name=voice["FriendlyName"],
-        locale=voice["Locale"],
-        language=voice["Locale"].split("-", maxsplit=1)[0],
-        gender=voice["Gender"],
-        status=voice["Status"],
-        suggested_codec=voice["SuggestedCodec"],
-        content_categories=list(voice_tag["ContentCategories"]),
-        voice_personalities=list(voice_tag["VoicePersonalities"]),
-    )
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        if scope.get("method") in {"POST", "PUT", "PATCH", "DELETE"}:
+            headers = dict(scope.get("headers", []))
+            origin = headers.get(b"origin", b"").decode("latin-1")
+            host = headers.get(b"host", b"").decode("latin-1")
+            if headers.get(b"x-requested-with") != b"tts-workspace" or (
+                origin and urlsplit(origin).netloc != host
+            ):
+                await _scope_error(
+                    scope,
+                    403,
+                    "invalid_origin",
+                    "Same-origin workspace request required",
+                )(scope, receive, send)
+                return
 
+        async def no_cache(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = [
+                    (k, v)
+                    for k, v in message.get("headers", [])
+                    if k.lower() != b"cache-control"
+                ]
+                message["headers"] = [
+                    *headers,
+                    (b"cache-control", b"private, no-store"),
+                ]
+            await send(message)
 
-def _mimo_voices() -> List[VoiceInfo]:
-    """Return the official static MiMo V2.5 preset voice catalog."""
-    return [
-        VoiceInfo(
-            name=voice.voice_id,
-            internal_name=voice.voice_id,
-            friendly_name=voice.voice_id,
-            locale=voice.locale,
-            language=voice.language,
-            gender=voice.gender,
-            status="GA",
-            suggested_codec="audio/wav;codec=pcm",
-            content_categories=["Preset"],
-            voice_personalities=[],
-        )
-        for voice in MIMO_PRESET_VOICES
-    ]
-
-
-class VoiceCache:  # pylint: disable=too-many-instance-attributes
-    """TTL cache with one shared asynchronous refresh and stale fallback."""
-
-    def __init__(
-        self,
-        factory: VoicesFactory,
-        proxy: Optional[str],
-        ttl_seconds: int,
-        request_timeout_seconds: int,
-    ) -> None:
-        self._factory = factory
-        self._proxy = proxy
-        self._ttl_seconds = ttl_seconds
-        self._request_timeout_seconds = request_timeout_seconds
-        self._voices: Optional[List[VoiceInfo]] = None
-        self._loaded_at = 0.0
-        self._refresh_task: Optional[asyncio.Task[List[VoiceInfo]]] = None
-        self._lock = asyncio.Lock()
-
-    def _fresh(self) -> bool:
-        return self._voices is not None and (
-            time.monotonic() - self._loaded_at < self._ttl_seconds
-        )
-
-    async def _refresh(self) -> List[VoiceInfo]:
-        raw_voices = await asyncio.wait_for(
-            self._factory(proxy=self._proxy),
-            timeout=self._request_timeout_seconds,
-        )
-        normalized = sorted(
-            (_normalize_voice(voice) for voice in raw_voices),
-            key=lambda voice: voice.name,
-        )
-        self._voices = normalized
-        self._loaded_at = time.monotonic()
-        return normalized
-
-    async def get(self) -> List[VoiceInfo]:
-        """Return fresh voices, or stale voices if refresh fails."""
-        if self._fresh():
-            assert self._voices is not None
-            return self._voices
-
-        async with self._lock:
-            if self._fresh():
-                assert self._voices is not None
-                return self._voices
-            if self._refresh_task is not None and self._refresh_task.done():
-                self._refresh_task = None
-            if self._refresh_task is None:
-                self._refresh_task = asyncio.create_task(self._refresh())
-            task = self._refresh_task
-
-        try:
-            return await asyncio.shield(task)
-        except Exception:  # pylint: disable=broad-exception-caught
-            if self._voices is not None:
-                return self._voices
-            raise
-        finally:
-            async with self._lock:
-                if self._refresh_task is task and task.done():
-                    self._refresh_task = None
-
-
-async def _collect_synthesis(
-    options: Dict[str, str],
-    communicator_factory: CommunicatorFactory,
-    config: ServerConfig,
-    *,
-    include_subtitles: bool,
-    session_factory: Optional[SessionFactory] = None,
-) -> tuple[bytes, str, Optional[int]]:
-    """Collect one upstream synthesis into bounded audio and optional SRT."""
-    communicator_options: Dict[str, Any] = {
-        "rate": options["rate"],
-        "volume": options["volume"],
-        "pitch": options["pitch"],
-        "boundary": options["boundary"],
-        "proxy": config.proxy,
-        "connect_timeout": config.upstream_connect_timeout_seconds,
-        "receive_timeout": config.upstream_receive_timeout_seconds,
-    }
-    if session_factory is not None:
-        communicator_options["session"] = await session_factory()
-    communicator = communicator_factory(
-        options["text"], options["voice"], **communicator_options
-    )
-    audio_chunks: List[bytes] = []
-    audio_size = 0
-    duration_ms: Optional[int] = None
-    submaker = SubMaker() if include_subtitles else None
-    async for chunk in communicator.stream():
-        if chunk["type"] == "audio":
-            data = chunk["data"]
-            audio_size += len(data)
-            if audio_size > config.max_audio_bytes:
-                raise AudioTooLarge
-            audio_chunks.append(data)
-            continue
-        offset = chunk.get("offset")
-        duration = chunk.get("duration")
-        if isinstance(offset, (int, float)) and isinstance(duration, (int, float)):
-            boundary_end_ms = max(0, round((offset + duration) / 10_000))
-            duration_ms = max(duration_ms or 0, boundary_end_ms)
-        if submaker is not None:
-            submaker.feed(chunk)
-    subtitles = submaker.get_srt() if submaker is not None else ""
-    return b"".join(audio_chunks), subtitles, duration_ms
-
-
-def _validated_options(
-    payload: TTSRequest,
-    boundary: Literal["WordBoundary", "SentenceBoundary"] = "SentenceBoundary",
-) -> Dict[str, str]:
-    """Reuse edge-tts option validation without coercing API values."""
-    validated = TTSConfig(
-        voice=payload.voice,
-        rate=payload.rate,
-        volume=payload.volume,
-        pitch=payload.pitch,
-        boundary=boundary,
-    )
-    return {
-        "text": payload.text,
-        "voice": validated.voice,
-        "rate": payload.rate,
-        "volume": payload.volume,
-        "pitch": payload.pitch,
-        "boundary": validated.boundary,
-    }
-
-
-def _validate_edge_request(
-    payload: TTSRequest,
-    boundary: Literal["WordBoundary", "SentenceBoundary"],
-) -> Dict[str, str]:
-    """Validate Edge-specific fields and return normalized synthesis options."""
-    fields: List[Dict[str, Any]] = []
-    if payload.mimo_mode != "preset":
-        fields.append(
-            _field_detail("mimo_mode", "is only supported by mimo-v2-tts", ["preset"])
-        )
-    for field in ("voice_description", "reference_audio"):
-        if getattr(payload, field) is not None:
-            fields.append(_field_detail(field, "is not supported by edge-tts"))
-    if fields:
-        raise RequestFieldError(
-            "MiMo-only fields are not supported by edge-tts", fields
-        )
-
-    for field, pattern in (
-        ("rate", r"^[+-]\d+%$"),
-        ("volume", r"^[+-]\d+%$"),
-        ("pitch", r"^[+-]\d+Hz$"),
-    ):
-        try:
-            TTSConfig.validate_string_param(field, getattr(payload, field), pattern)
-        except (TypeError, ValueError) as exc:
-            raise RequestFieldError(str(exc), [_field_detail(field, str(exc))]) from exc
-    try:
-        return _validated_options(payload, boundary)
-    except (TypeError, ValueError) as exc:
-        raise RequestFieldError(str(exc), [_field_detail("voice", str(exc))]) from exc
-
-
-def _validate_mimo_common_request(payload: TTSRequest, config: ServerConfig) -> None:
-    """Validate MiMo constraints shared by every synthesis mode."""
-    if len(payload.text) > min(config.max_text_length, 3000):
-        raise RequestFieldError(
-            "MiMo text exceeds the 3000 character limit",
-            [_field_detail("text", "must contain at most 3000 characters")],
-        )
-    unsupported_controls = [
-        field
-        for field, default in (
-            ("rate", "+0%"),
-            ("volume", "+0%"),
-            ("pitch", "+0Hz"),
-        )
-        if getattr(payload, field) != default
-    ]
-    if unsupported_controls:
-        raise RequestFieldError(
-            "rate, volume and pitch are not supported by mimo-v2-tts",
-            [
-                _field_detail(field, "is not supported by mimo-v2-tts")
-                for field in unsupported_controls
-            ],
-        )
-
-
-def _validate_mimo_preset_request(payload: TTSRequest) -> MiMoSynthesisRequest:
-    """Validate and build a MiMo preset-voice request."""
-    fields = [
-        _field_detail(field, "is not accepted in preset mode")
-        for field in ("voice_description", "reference_audio")
-        if getattr(payload, field) is not None
-    ]
-    if fields:
-        raise RequestFieldError(
-            "preset mode does not accept design or clone fields", fields
-        )
-    voice = payload.voice if "voice" in payload.model_fields_set else "mimo_default"
-    try:
-        validate_preset_voice(voice)
-    except ValueError as exc:
-        raise RequestFieldError(
-            str(exc),
-            [
-                _field_detail(
-                    "voice",
-                    str(exc),
-                    [preset.voice_id for preset in MIMO_PRESET_VOICES],
-                )
-            ],
-        ) from exc
-    return MiMoSynthesisRequest(
-        text=payload.text,
-        mode="preset",
-        voice=voice,
-    )
-
-
-def _validate_mimo_design_request(payload: TTSRequest) -> MiMoSynthesisRequest:
-    """Validate and build a MiMo voice-design request."""
-    if payload.reference_audio is not None:
-        raise RequestFieldError(
-            "design mode does not accept reference_audio",
-            [_field_detail("reference_audio", "is not accepted in design mode")],
-        )
-    if payload.voice_description is None or not payload.voice_description.strip():
-        raise RequestFieldError(
-            "voice_description is required for MiMo design mode",
-            [_field_detail("voice_description", "is required in design mode")],
-        )
-    return MiMoSynthesisRequest(
-        text=payload.text,
-        mode="design",
-        voice_description=payload.voice_description,
-    )
-
-
-def _validate_mimo_clone_request(
-    payload: TTSRequest, config: ServerConfig
-) -> MiMoSynthesisRequest:
-    """Validate and build a MiMo voice-cloning request."""
-    if payload.voice_description is not None:
-        raise RequestFieldError(
-            "clone mode does not accept voice_description",
-            [_field_detail("voice_description", "is not accepted in clone mode")],
-        )
-    if payload.reference_audio is None:
-        raise RequestFieldError(
-            "reference_audio is required for MiMo clone mode",
-            [_field_detail("reference_audio", "is required in clone mode")],
-        )
-    try:
-        reference_audio = normalize_reference_audio(
-            payload.reference_audio,
-            config.max_reference_audio_bytes,
-        )
-    except ReferenceAudioTooLarge:
-        raise
-    except ValueError as exc:
-        raise RequestFieldError(
-            str(exc), [_field_detail("reference_audio", str(exc))]
-        ) from exc
-    return MiMoSynthesisRequest(
-        text=payload.text,
-        mode="clone",
-        reference_audio=reference_audio,
-    )
-
-
-def _validate_mimo_request(
-    payload: TTSRequest, config: ServerConfig
-) -> MiMoSynthesisRequest:
-    """Validate common MiMo rules and dispatch to the selected mode."""
-    _validate_mimo_common_request(payload, config)
-    if payload.mimo_mode == "preset":
-        return _validate_mimo_preset_request(payload)
-    if "voice" in payload.model_fields_set:
-        raise RequestFieldError(
-            "voice is only supported by MiMo preset mode",
-            [_field_detail("voice", "is only supported in preset mode")],
-        )
-    if payload.mimo_mode == "design":
-        return _validate_mimo_design_request(payload)
-    return _validate_mimo_clone_request(payload, config)
-
-
-def _validate_provider_request(
-    payload: TTSRequest,
-    config: ServerConfig,
-    boundary: Literal["WordBoundary", "SentenceBoundary"] = "SentenceBoundary",
-) -> tuple[Optional[Dict[str, str]], Optional[MiMoSynthesisRequest]]:
-    """Validate model-specific options without silently ignoring any field."""
-    if payload.model == "edge-tts":
-        return _validate_edge_request(payload, boundary), None
-    return None, _validate_mimo_request(payload, config)
+        await self.app(scope, receive, no_cache)
 
 
 def create_app(
@@ -754,6 +432,9 @@ def create_app(
     voices_factory: VoicesFactory = list_voices,
     mimo_client: Optional[MiMoClientLike] = None,
     audio_converter: AudioConverter = convert_audio,
+    workspace_engine_factory: Optional[
+        Callable[[ServerConfig], SynthesisEngine]
+    ] = None,
 ) -> FastAPI:
     """Build an isolated FastAPI application with deployment safeguards."""
     docs_url = "/docs" if config.docs_enabled else None
@@ -770,57 +451,14 @@ def create_app(
         name="X-API-Key", scheme_name="APIKeyHeader", auto_error=False
     )
     capacity = asyncio.Semaphore(config.max_concurrent_requests)
-    voices_cache = VoiceCache(
-        voices_factory,
-        proxy=config.proxy,
-        ttl_seconds=config.voices_cache_ttl_seconds,
-        request_timeout_seconds=config.request_timeout_seconds,
+    engine = SynthesisEngine(
+        config,
+        communicator_factory,
+        voices_factory=voices_factory,
+        mimo_client=mimo_client,
+        audio_converter=audio_converter,
     )
-    owned_mimo_client: Optional[MiMoClient] = None
-    edge_session: Optional[aiohttp.ClientSession] = None
-
-    async def get_edge_session() -> aiohttp.ClientSession:
-        """Create one DNS-caching session per server process and reuse it."""
-        nonlocal edge_session
-        if edge_session is None or edge_session.closed:
-            connector = aiohttp.TCPConnector(
-                limit=config.max_concurrent_requests,
-                limit_per_host=config.max_concurrent_requests,
-                ttl_dns_cache=300,
-            )
-            edge_session = aiohttp.ClientSession(
-                connector=connector,
-                trust_env=True,
-                timeout=aiohttp.ClientTimeout(
-                    total=None,
-                    connect=None,
-                    sock_connect=config.upstream_connect_timeout_seconds,
-                    sock_read=config.upstream_receive_timeout_seconds,
-                ),
-            )
-        return edge_session
-
-    async def close_edge_session() -> None:
-        if edge_session is not None and not edge_session.closed:
-            await edge_session.close()
-
-    edge_session_factory = (
-        get_edge_session if communicator_factory is Communicate else None
-    )
-    if edge_session_factory is not None:
-        app.router.add_event_handler("shutdown", close_edge_session)
-    if mimo_client is None and config.mimo_api_key is not None:
-        owned_mimo_client = MiMoClient(
-            config.mimo_api_key,
-            config.mimo_base_url,
-            config.mimo_request_timeout_seconds,
-            config.max_audio_bytes,
-            config.proxy,
-        )
-        mimo_client = owned_mimo_client
-
-    if owned_mimo_client is not None:
-        app.router.add_event_handler("shutdown", owned_mimo_client.close)
+    app.router.add_event_handler("shutdown", engine.close)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(
@@ -857,7 +495,7 @@ def create_app(
     async def health() -> Dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/", tags=["service"])
+    @app.get("/api/service", tags=["service"])
     async def service_info() -> Dict[str, Optional[str]]:
         """Return a small discovery document for operators and first-time users."""
         return {
@@ -947,7 +585,7 @@ def create_app(
             available = _mimo_voices()
         else:
             try:
-                available = await voices_cache.get()
+                available = await engine.voices_cache.get()
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 _APP_LOGGER.error(
                     "Voice list refresh failed type=%s request_id=%s",
@@ -994,7 +632,7 @@ def create_app(
                 request,
             )
         try:
-            edge_options, mimo_options = _validate_provider_request(
+            _edge_options, mimo_options = _validate_provider_request(
                 payload, config, boundary
             )
             if include_subtitles:
@@ -1012,7 +650,7 @@ def create_app(
                         "Bundle response_format must be mp3",
                         request,
                     )
-            if mimo_options is not None and mimo_client is None:
+            if mimo_options is not None and engine.mimo_client is None:
                 return _error(
                     503,
                     "provider_not_configured",
@@ -1045,41 +683,8 @@ def create_app(
         try:
             try:
 
-                async def generate() -> tuple[bytes, str, str, Optional[int]]:
-                    if edge_options is not None:
-                        audio, subtitles, duration_ms = await _collect_synthesis(
-                            edge_options,
-                            communicator_factory,
-                            config,
-                            include_subtitles=include_subtitles,
-                            session_factory=edge_session_factory,
-                        )
-                        source_format = "mp3"
-                    else:
-                        assert mimo_client is not None
-                        assert mimo_options is not None
-                        audio = await mimo_client.synthesize(mimo_options)
-                        subtitles = ""
-                        source_format = "wav"
-                        duration_ms = inspect_audio(audio, source_format).duration_ms
-                        if len(audio) > config.max_audio_bytes:
-                            raise AudioTooLarge
-                    if (
-                        not include_subtitles
-                        and source_format != payload.response_format
-                    ):
-                        audio = await audio_converter(
-                            audio,
-                            source_format,
-                            payload.response_format,
-                            config.max_audio_bytes,
-                        )
-                        source_format = payload.response_format
-                    return audio, subtitles, source_format, duration_ms
-
-                return await asyncio.wait_for(
-                    generate(),
-                    timeout=config.request_timeout_seconds,
+                return await engine.synthesize(
+                    payload, boundary, include_subtitles=include_subtitles
                 )
             except asyncio.TimeoutError:
                 return _error(
@@ -1237,7 +842,20 @@ def create_app(
             headers=headers,
         )
 
+    if workspace_engine_factory is None:
+
+        def workspace_engine_factory(channel_config: ServerConfig) -> SynthesisEngine:
+            return SynthesisEngine(
+                channel_config,
+                communicator_factory,
+                voices_factory=voices_factory,
+                mimo_client=mimo_client,
+                audio_converter=audio_converter,
+            )
+
+    mount_workspace(app, config, capacity, workspace_engine_factory)
     app.add_middleware(BodyLimitMiddleware, max_bytes=config.max_request_bytes)
+    app.add_middleware(WorkspaceGuardMiddleware)
     app.add_middleware(APIKeyMiddleware, api_key=config.api_key)
     app.add_middleware(SafeErrorMiddleware)
     app.add_middleware(RequestContextMiddleware)

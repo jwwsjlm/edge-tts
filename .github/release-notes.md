@@ -1,5 +1,11 @@
 # Edge TTS + Xiaomi MiMo HTTP Server __VERSION__
 
+此版本增加 Vue 3 语音工作台。启动后访问 `http://你的IP:5050/`，无需普通用户登录即可使用 Edge/MiMo、试听、长文后台生成及音频下载；Edge 支持字幕。`/admin` 使用配置中的 `api_key` 新增、编辑、启停和测试渠道，MiMo 开放预置、设计与克隆三种模式。
+
+生成记录按匿名浏览器隔离，默认保留 7 天，可在管理页调整；任务失败或重启后可继续。程序需要可写数据目录，默认在配置文件旁的 `data/`。升级前备份配置和数据目录。提供的 Compose 使用 `tts-data:/config/data` 持久卷；直接 `docker run` 请添加 `--mount type=volume,source=tts-data,target=/config/data`。不要删除数据卷来升级。已有 `/v1/*` API 保持兼容。
+
+EXE、两种 Python 运行包及 Docker 镜像均包含完整前端，运行时无需 Node.js。普通用户无会员或每日额度；单段、请求体、磁盘和并发保护仍然生效。MiMo 免费政策和服务可用性由上游决定。
+
 已同步上游 7.3.1 和提交 `bd44c1d1aaebdc1db7f47456ee12431b42ec7cac`：支持 Sec-MS-GEC v2，修复系统语言影响日期解析及同步合成异常挂起。保留本项目 MiMo、HTTP API 和会话复用优化。
 
 本次 Release 提供 Windows x64 ZIP、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 Docker 离线镜像。服务使用 FastAPI + Uvicorn，`POST /v1/tts` 可通过 `model` 选择 Edge TTS 或 Xiaomi MiMo V2.5，并支持完整 MP3/WAV。MiMo 包含预置音色、音色设计和音色克隆；不是 OpenAI API，也不使用 HTTP 流式传输。

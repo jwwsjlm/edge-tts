@@ -26,8 +26,18 @@ function Stop-PackagedProcess {
 
 Push-Location $Root
 try {
+    Push-Location (Join-Path $Root "web")
+    try {
+        npm ci
+        if ($LASTEXITCODE -ne 0) { throw "Frontend dependency install failed" }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
+    } finally { Pop-Location }
     Stop-PackagedProcess $ReleaseExe
     if (Test-Path -LiteralPath $ReleaseRoot) {
+        if ([IO.Path]::GetFullPath($ReleaseRoot) -ne (Join-Path $Root "releases/windows")) {
+            throw "Release output must stay inside the workspace"
+        }
         Remove-Item -LiteralPath $ReleaseRoot -Recurse -Force
     }
     New-Item -ItemType Directory -Path $ReleaseRoot -Force | Out-Null
@@ -67,6 +77,8 @@ port: $port
                 try {
                     $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 1
                     if ($health.status -eq "ok") {
+                        $page = Invoke-WebRequest -Uri "http://127.0.0.1:$port/" -UseBasicParsing -TimeoutSec 2
+                        if ($page.Content -notmatch '<div id="app">') { throw "Frontend missing from EXE" }
                         $healthy = $true
                         break
                     }
