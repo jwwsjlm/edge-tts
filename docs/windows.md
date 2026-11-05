@@ -87,3 +87,7 @@ Windows 独立包同样支持在 `config.yaml` 设置全局 `proxy`、`upstream_
 ## 发布环境
 
 `.github/workflows/release.yml` 在 `windows-2022` 上使用 Python 3.14 x64 重建并冒烟测试。只有 `vX.Y.Z` Tag 与 `src/edge_tts/version.py` 完全一致，且测试、格式、类型、lint 全部通过时，Windows ZIP 才会进入 GitHub Release；最终 SHA-256 位于同一 Release 的 `SHA256SUMS.txt`。
+
+## Windows Python 运行包
+
+已有 Python 3.14 x64 时，也可下载 `edge-tts-windows-x64-python314.zip`，解压后进入同名目录执行 `py -3.14 run.py`。依赖及 FFmpeg 位于 `libs/`，无需 pip 安装；缺少 `config.yaml` 时自动创建。该包仅适用于 Windows x64，与 Linux Python 包不可混用。不安装 Python 时使用 EXE 包。

@@ -1,4 +1,4 @@
-# Edge TTS + Xiaomi MiMo 7.5.6
+# Edge TTS + Xiaomi MiMo 7.5.7
 
 本项目提供 Microsoft Edge TTS 与 Xiaomi MiMo V2.5 的统一非流式 HTTP 服务。`POST /v1/tts` 通过 `model` 自由选择 `edge-tts` 或 `mimo-v2-tts`，支持完整 MP3/WAV 返回；MiMo 还支持预置音色、音色设计和音色克隆。原 Edge 调用省略 `model` 时保持兼容。
 
@@ -13,11 +13,12 @@
 
 ## Release 文件说明
 
-每个正式 Release 只发布下面四个下载文件：
+每个正式 Release 发布下面五个下载文件：
 
 | 文件 | 适用环境 | 用法 |
 | --- | --- | --- |
 | `edge-tts-windows-x64.zip` | Windows x64 | 解压、复制配置、双击 EXE |
+| `edge-tts-windows-x64-python314.zip` | Windows x64 + Python 3.14 | 解压后运行 `py -3.14 run.py` |
 | `edge-tts-linux-amd64-python314.tar.gz` | Linux amd64 + Python 3.14 | 解压后运行 `python3.14 run.py` |
 | `edge-tts-linux-amd64-docker-offline.tar.gz` | Linux amd64 Docker / 1Panel | 使用 `docker load` 导入 |
 | `SHA256SUMS.txt` | 所有下载文件 | 校验文件完整性 |
@@ -68,7 +69,7 @@ python run.py --config config.yaml
 ```bash
 cp config.example.yaml config.yaml
 # 编辑 config.yaml，替换 api_key
-echo "EDGE_TTS_IMAGE_TAG=7.5.6" > .env
+echo "EDGE_TTS_IMAGE_TAG=7.5.7" > .env
 docker compose -f compose.yaml up -d
 curl http://127.0.0.1:5050/health
 ```
@@ -186,6 +187,8 @@ MiMo 的 3000 字符是上游硬限制；`mimo_recommended_max_text_length` 默�
 播放器、客户端文件读取、底层 connector 和实时 chunk stream 不作为服务端 HTTP 接口。
 
 ## Python 库与命令行
+
+已同步上游 7.3.1 及 `bd44c1d` 的同步异常修复，支持 Sec-MS-GEC v2 和不依赖系统语言的日期解析。终端合成时显示进度条，使用 `--no-progress` 关闭；重定向 stderr 或向 stderr 输出字幕时自动关闭。
 
 ```bash
 pip install edge-tts

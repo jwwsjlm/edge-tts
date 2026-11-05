@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tarfile
 import types
+import zipfile
 from pathlib import Path
 from typing import Any, Dict
 
@@ -90,12 +91,18 @@ def test_python_bundle_runner_forwards_explicit_arguments(
     assert captured == [["--config", "/srv/edge/config.yaml"]]
 
 
+@pytest.mark.parametrize("platform", ["linux-amd64", "windows-x64"])
 def test_python_bundle_builder_creates_clean_single_root_archive(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    platform: str,
 ) -> None:
     """The builder should keep only runtime files and remove forbidden content."""
     namespace = runpy.run_path(str(ROOT / "packaging/python/build_bundle.py"))
+    bundle_name = f"edge-tts-{platform}-python314"
+    monkeypatch.setitem(
+        namespace["build_bundle"].__globals__, "BUNDLE_NAME", bundle_name
+    )
 
     def fake_install(libs: Path) -> None:
         (libs / "edge_tts").mkdir(parents=True)
@@ -112,9 +119,10 @@ def test_python_bundle_builder_creates_clean_single_root_archive(
         namespace["build_bundle"].__globals__, "_install_runtime", fake_install
     )
     archive = namespace["build_bundle"](tmp_path)
-    bundle = tmp_path / "edge-tts-linux-amd64-python314"
+    bundle = tmp_path / bundle_name
 
-    assert archive == tmp_path / "edge-tts-linux-amd64-python314.tar.gz"
+    suffix = ".zip" if platform == "windows-x64" else ".tar.gz"
+    assert archive == tmp_path / f"{bundle_name}{suffix}"
     assert archive.is_file()
     assert {path.name for path in bundle.iterdir()} == {
         "libs",
@@ -127,9 +135,13 @@ def test_python_bundle_builder_creates_clean_single_root_archive(
     assert not list(bundle.rglob("*.md"))
     assert not list(bundle.rglob("*.pyc"))
     assert not list(bundle.rglob("__pycache__"))
-    with tarfile.open(archive, "r:gz") as packaged:
-        roots = {member.name.split("/", 1)[0] for member in packaged.getmembers()}
-    assert roots == {"edge-tts-linux-amd64-python314"}
+    if platform == "windows-x64":
+        with zipfile.ZipFile(archive) as zipped:
+            roots = {name.split("/", 1)[0] for name in zipped.namelist()}
+    else:
+        with tarfile.open(archive, "r:gz") as packaged:
+            roots = {member.name.split("/", 1)[0] for member in packaged.getmembers()}
+    assert roots == {bundle_name}
 
 
 def test_windows_release_assets_are_complete() -> None:
@@ -370,16 +382,19 @@ def test_release_workflow_gates_all_publish_jobs() -> None:
     assert set(jobs) == {
         "validate",
         "windows",
+        "windows_python",
         "python_bundle",
         "docker",
         "release",
     }
     assert jobs["windows"]["needs"] == "validate"
+    assert jobs["windows_python"]["needs"] == "validate"
     assert jobs["python_bundle"]["needs"] == "validate"
     assert jobs["docker"]["needs"] == "validate"
     assert set(jobs["release"]["needs"]) == {
         "validate",
         "windows",
+        "windows_python",
         "python_bundle",
         "docker",
     }
@@ -392,7 +407,7 @@ def test_automation_pins_python_3_14() -> None:
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     quality = (ROOT / ".github/workflows/code-quality.yml").read_text(encoding="utf-8")
 
-    assert release.count('python-version: "3.14"') == 2
+    assert release.count('python-version: "3.14"') == 3
     assert "Set up Python 3.14" in release
     assert "Set up Python 3.14 x64" in release
     assert "3.12" not in release
@@ -592,11 +607,11 @@ def test_root_config_example_is_server_ready() -> None:
     }
 
 
-def test_release_version_is_7_5_6() -> None:
+def test_release_version_is_7_5_7() -> None:
     """The package version is the source of truth for the release tag."""
     namespace = runpy.run_path(str(ROOT / "src/edge_tts/version.py"))
 
-    assert namespace["__version__"] == "7.5.6"
+    assert namespace["__version__"] == "7.5.7"
 
 
 def test_root_secret_config_is_ignored_without_hiding_example() -> None:
@@ -630,11 +645,11 @@ def test_1panel_guide_documents_docker_only_deployment() -> None:
     guide = path.read_text(encoding="utf-8")
     for required in (
         "Docker-only",
-        "ghcr.io/jwwsjlm/edge-tts:7.5.6",
+        "ghcr.io/jwwsjlm/edge-tts:7.5.7",
         "edge-tts-linux-amd64-docker-offline.tar.gz",
         "sha256sum -c SHA256SUMS.txt",
         "docker load",
-        "EDGE_TTS_IMAGE_TAG=7.5.6",
+        "EDGE_TTS_IMAGE_TAG=7.5.7",
         "chown 10001:10001 config.yaml",
         "docker compose -f compose.yaml up -d",
         "5050",
@@ -719,7 +734,7 @@ def test_windows_build_guide_is_complete() -> None:
         assert required in guide
 
 
-def test_current_release_docs_use_python_3_14_and_version_7_5_6() -> None:
+def test_current_release_docs_use_python_3_14_and_version_7_5_7() -> None:
     """Current quick starts should match the runtime and release being published."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     windows = (ROOT / "docs/windows.md").read_text(encoding="utf-8")
@@ -727,19 +742,19 @@ def test_current_release_docs_use_python_3_14_and_version_7_5_6() -> None:
     panel = (ROOT / "docs/1panel.md").read_text(encoding="utf-8")
     notes = (ROOT / ".github/release-notes.md").read_text(encoding="utf-8")
 
-    assert "# Edge TTS + Xiaomi MiMo 7.5.6" in readme
+    assert "# Edge TTS + Xiaomi MiMo 7.5.7" in readme
     assert "推荐 Python 3.14" in readme
     assert "edge-tts-windows-x64.zip" in readme
     assert "edge-tts-windows-x64.exe" in readme
-    assert "EDGE_TTS_IMAGE_TAG=7.5.6" in readme
+    assert "EDGE_TTS_IMAGE_TAG=7.5.7" in readme
     assert "Python 3.12" not in readme
     assert "Python 3.14 x64" in windows
     assert "Python 3.12" not in windows
-    assert "ghcr.io/jwwsjlm/edge-tts:7.5.6" in docker
-    assert "EDGE_TTS_IMAGE_TAG=7.5.6" in docker
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.7" in docker
+    assert "EDGE_TTS_IMAGE_TAG=7.5.7" in docker
     assert "docker pull ghcr.io/jwwsjlm/edge-tts:NEW_VERSION" in docker
-    assert "ghcr.io/jwwsjlm/edge-tts:7.5.6" in panel
-    assert "EDGE_TTS_IMAGE_TAG=7.5.6" in panel
+    assert "ghcr.io/jwwsjlm/edge-tts:7.5.7" in panel
+    assert "EDGE_TTS_IMAGE_TAG=7.5.7" in panel
     assert "Python 3.14" in notes
 
 

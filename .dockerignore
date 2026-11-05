@@ -13,3 +13,7 @@ examples
 packaging
 releases
 tests
+.venv*
+release-assets
+config.yaml
+edge-tts-server-source.zip

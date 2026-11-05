@@ -1,4 +1,4 @@
-"""Build the clean Linux amd64 Python 3.14 runtime bundle."""
+"""Build a native Windows or Linux Python 3.14 runtime bundle."""
 
 import argparse
 import shutil
@@ -8,7 +8,11 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLE_NAME = "edge-tts-linux-amd64-python314"
+BUNDLE_NAME = (
+    "edge-tts-windows-x64-python314"
+    if sys.platform == "win32"
+    else "edge-tts-linux-amd64-python314"
+)
 ALLOWED_TOP_LEVEL = {"libs", "config.example.yaml", "run.py", "LICENSE"}
 
 
@@ -36,9 +40,10 @@ def _remove_forbidden(root: Path) -> None:
     playback = root / "edge_playback"
     if playback.exists():
         shutil.rmtree(playback)
-    scripts = root / "bin"
-    if scripts.exists():
-        shutil.rmtree(scripts)
+    for name in ("bin", "Scripts"):
+        scripts = root / name
+        if scripts.exists():
+            shutil.rmtree(scripts)
     for path in sorted(root.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if not path.exists():
             continue
@@ -74,7 +79,10 @@ def build_bundle(output_root: Path) -> Path:
     output_root = output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     bundle = output_root / BUNDLE_NAME
-    archive = output_root / f"{BUNDLE_NAME}.tar.gz"
+    if bundle.resolve().parent != output_root:
+        raise RuntimeError("Bundle directory must stay inside the output directory")
+    windows = "windows" in BUNDLE_NAME
+    archive = output_root / f"{BUNDLE_NAME}{'.zip' if windows else '.tar.gz'}"
     if bundle.exists():
         shutil.rmtree(bundle)
     archive.unlink(missing_ok=True)
@@ -86,8 +94,13 @@ def build_bundle(output_root: Path) -> Path:
     shutil.copy2(ROOT / "config.example.yaml", bundle / "config.example.yaml")
     shutil.copy2(ROOT / "LICENSE", bundle / "LICENSE")
     _audit(bundle)
-    with tarfile.open(archive, "w:gz") as packaged:
-        packaged.add(bundle, arcname=BUNDLE_NAME)
+    if windows:
+        shutil.make_archive(
+            str(output_root / BUNDLE_NAME), "zip", output_root, BUNDLE_NAME
+        )
+    else:
+        with tarfile.open(archive, "w:gz") as packaged:
+            packaged.add(bundle, arcname=BUNDLE_NAME)
     return archive
 
 
@@ -96,6 +109,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
+    if sys.version_info[:2] != (3, 14):
+        parser.error("Build with Python 3.14 on the target platform")
     print(build_bundle(args.output))
 
 

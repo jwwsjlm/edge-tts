@@ -52,8 +52,8 @@ openssl rand -base64 32
 
 ```bash
 cd /opt/edge-tts
-echo 'EDGE_TTS_IMAGE_TAG=7.5.6' > .env
-docker pull ghcr.io/jwwsjlm/edge-tts:7.5.6
+echo 'EDGE_TTS_IMAGE_TAG=7.5.7' > .env
+docker pull ghcr.io/jwwsjlm/edge-tts:7.5.7
 docker compose -f compose.yaml up -d
 ```
 
@@ -83,13 +83,13 @@ grep 'edge-tts-linux-amd64-docker-offline.tar.gz' SHA256SUMS.txt | sha256sum -c 
 
 ```bash
 gzip -dc edge-tts-linux-amd64-docker-offline.tar.gz | docker load
-docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.6 >/dev/null
+docker image inspect ghcr.io/jwwsjlm/edge-tts:7.5.7 >/dev/null
 ```
 
 创建 `.env` 并启动：
 
 ```bash
-echo 'EDGE_TTS_IMAGE_TAG=7.5.6' > .env
+echo 'EDGE_TTS_IMAGE_TAG=7.5.7' > .env
 docker compose -f compose.yaml up -d
 ```
 

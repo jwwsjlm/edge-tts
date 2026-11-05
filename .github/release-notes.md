@@ -1,5 +1,7 @@
 # Edge TTS + Xiaomi MiMo HTTP Server __VERSION__
 
+已同步上游 7.3.1 和提交 `bd44c1d1aaebdc1db7f47456ee12431b42ec7cac`：支持 Sec-MS-GEC v2，修复系统语言影响日期解析及同步合成异常挂起。保留本项目 MiMo、HTTP API 和会话复用优化。
+
 本次 Release 提供 Windows x64 ZIP、Linux amd64 Python 3.14 纯净运行包、GHCR 双架构镜像和 Linux amd64 Docker 离线镜像。服务使用 FastAPI + Uvicorn，`POST /v1/tts` 可通过 `model` 选择 Edge TTS 或 Xiaomi MiMo V2.5，并支持完整 MP3/WAV。MiMo 包含预置音色、音色设计和音色克隆；不是 OpenAI API，也不使用 HTTP 流式传输。
 
 服务端会复用 Edge/MiMo 上游会话和 DNS 缓存；请求正文、音频块及字幕 ZIP 已针对大文件减少重复复制和无效压缩。接口路径、鉴权和完整缓冲响应行为保持兼容。
@@ -9,6 +11,7 @@ FFmpeg 转码现在会边读取边执行输出上限，超限立即回收子进�
 ## 先按设备选择下载文件
 
 - **Windows 本地运行**：`edge-tts-windows-x64.zip`。解压后将 `config.example.yaml` 复制为 `config.yaml`，修改 Key，再双击 `edge-tts-windows-x64.exe`。无需 Python、Docker 或额外依赖。
+- **Windows 已有 Python 3.14**：`edge-tts-windows-x64-python314.zip`。解压后进入同名目录，运行 `py -3.14 run.py`；依赖附带在 `libs/`，无需 pip 安装。没有配置时自动创建带随机密钥的配置。此包不包含 Python 解释器。
 - **Linux 服务器，已有 Python 3.14**：`edge-tts-linux-amd64-python314.tar.gz`。这是纯净运行包，依赖位于 `libs/`；不适用于 Windows。
 - **Linux 服务器 / 1Panel / Docker 离线部署**：`edge-tts-linux-amd64-docker-offline.tar.gz`。这是 Docker 离线镜像；不适用于 Windows，不能直接解压运行。
 - **核对下载完整性**：`SHA256SUMS.txt`。
